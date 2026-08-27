@@ -48,5 +48,8 @@ class CustomerRead(BaseModel):
 class CustomerListResponse(BaseModel):
     items: list[CustomerRead]
     total: int
+    associated: int
+    pending_association: int
+    inactive: int
     offset: int
     limit: int

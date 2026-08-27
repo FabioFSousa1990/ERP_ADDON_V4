@@ -27,6 +27,9 @@ export type CustomerUpdate = Partial<CustomerCreate> & {
 export type CustomerListResponse = {
   items: Customer[];
   total: number;
+  associated: number;
+  pending_association: number;
+  inactive: number;
   offset: number;
   limit: number;
 };

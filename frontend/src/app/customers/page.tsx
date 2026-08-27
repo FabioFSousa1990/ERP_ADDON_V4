@@ -52,6 +52,8 @@ function CustomerStatus({ customer }: { customer: Customer }) {
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [total, setTotal] = useState(0);
+  const [associated, setAssociated] = useState(0);
+  const [pendingAssociation, setPendingAssociation] = useState(0);
   const [search, setSearch] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -86,6 +88,8 @@ export default function CustomersPage() {
 
       setCustomers(data.items);
       setTotal(data.total);
+      setAssociated(data.associated);
+      setPendingAssociation(data.pending_association);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -193,13 +197,7 @@ async function toggleCustomerStatus(customer: Customer) {
     setUpdatingCustomerId(null);
   }
 }
-  const associated = customers.filter(
-    (customer) => customer.is_active && customer.erp_code,
-  ).length;
 
-  const pendingAssociation = customers.filter(
-    (customer) => customer.is_active && !customer.erp_code,
-  ).length;
 
   return (
     <div className="space-y-6">

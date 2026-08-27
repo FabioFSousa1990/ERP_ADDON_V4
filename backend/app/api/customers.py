@@ -43,15 +43,12 @@ def list_customers(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> CustomerListResponse:
-    filters = []
-
-    if not include_inactive:
-        filters.append(Customer.is_active.is_(True))
+    search_filters = []
 
     if search and search.strip():
         pattern = f"%{search.strip()}%"
 
-        filters.append(
+        search_filters.append(
             or_(
                 Customer.name.ilike(pattern),
                 Customer.erp_code.ilike(pattern),
@@ -59,29 +56,69 @@ def list_customers(
             )
         )
 
-    total_statement = (
+    list_filters = list(search_filters)
+
+    if not include_inactive:
+        list_filters.append(Customer.is_active.is_(True))
+
+    total = database.scalar(
         select(func.count())
         .select_from(Customer)
-        .where(*filters)
-    )
-    total = database.scalar(total_statement) or 0
+        .where(*list_filters)
+    ) or 0
 
-    customers_statement = (
-        select(Customer)
-        .where(*filters)
-        .order_by(Customer.created_at.desc())
-        .offset(offset)
-        .limit(limit)
+    associated = database.scalar(
+        select(func.count())
+        .select_from(Customer)
+        .where(
+            *search_filters,
+            Customer.is_active.is_(True),
+            Customer.erp_code.is_not(None),
+            Customer.erp_code != "",
+        )
+    ) or 0
+
+    pending_association = database.scalar(
+        select(func.count())
+        .select_from(Customer)
+        .where(
+            *search_filters,
+            Customer.is_active.is_(True),
+            or_(
+                Customer.erp_code.is_(None),
+                Customer.erp_code == "",
+            ),
+        )
+    ) or 0
+
+    inactive = database.scalar(
+        select(func.count())
+        .select_from(Customer)
+        .where(
+            *search_filters,
+            Customer.is_active.is_(False),
+        )
+    ) or 0
+
+    customers = list(
+        database.scalars(
+            select(Customer)
+            .where(*list_filters)
+            .order_by(Customer.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        ).all()
     )
-    customers = list(database.scalars(customers_statement).all())
 
     return CustomerListResponse(
         items=customers,
         total=total,
+        associated=associated,
+        pending_association=pending_association,
+        inactive=inactive,
         offset=offset,
         limit=limit,
     )
-
 
 @router.get("/{customer_id}", response_model=CustomerRead)
 def get_customer(
