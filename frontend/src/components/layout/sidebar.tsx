@@ -15,7 +15,7 @@ const navigation = [
     name: "Produtos",
     href: "/products",
     icon: Package,
-    enabled: false,
+    enabled: true,
   },
   {
     name: "Cotações",
