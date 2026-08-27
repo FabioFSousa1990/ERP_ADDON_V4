@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from backend.app.api.customers import router as customers_router
 from backend.app.core.config import settings
 from backend.app.database import check_database
 
@@ -18,6 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(customers_router, prefix="/api/v1")
 
 @app.get("/api/v1/health")
 def health_check() -> dict[str, str]:
