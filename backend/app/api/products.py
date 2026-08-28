@@ -225,6 +225,8 @@ def update_product(
 
 
 @router.delete("/{product_id}", response_model=ProductRead)
+
+
 def deactivate_product(
     product_id: uuid.UUID,
     database: DatabaseSession,
