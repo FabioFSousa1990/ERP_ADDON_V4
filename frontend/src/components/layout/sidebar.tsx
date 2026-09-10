@@ -21,7 +21,7 @@ const navigation = [
     name: "Cotações",
     href: "/quotations",
     icon: FileText,
-    enabled: false,
+    enabled: true,
   },
 ];
 
