@@ -1,5 +1,5 @@
 "use client";
-
+import { QuotationFilesPanel } from "@/components/quotations/quotation-files-panel";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -251,16 +251,7 @@ export default function QuotationDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6">
-        <h2 className="text-lg font-semibold text-slate-950">
-          Ficheiros recebidos
-        </h2>
-
-        <p className="mt-2 text-sm text-slate-500">
-          Aqui serão associados a BOM, Gerbers, Pick&amp;Place,
-          Assembly e outros documentos do pedido.
-        </p>
-      </section>
+<QuotationFilesPanel quotationRequestId={quotation.id} />
     </div>
   );
 }

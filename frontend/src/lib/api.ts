@@ -1,4 +1,4 @@
-const API_URL =
+export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001/api/v1";
 
 export async function apiRequest<T>(
@@ -7,9 +7,17 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const headers = new Headers(options.headers);
 
-  if (options.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
+const isFormData =
+  typeof FormData !== "undefined" &&
+  options.body instanceof FormData;
+
+if (
+  options.body &&
+  !isFormData &&
+  !headers.has("Content-Type")
+) {
+  headers.set("Content-Type", "application/json");
+}
 
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
