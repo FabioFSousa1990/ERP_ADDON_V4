@@ -7,6 +7,9 @@ from backend.app.api.products import router as products_router
 from backend.app.api.quotation_requests import (
     router as quotation_requests_router,
 )
+from backend.app.api.quotation_files import (
+    router as quotation_files_router,
+)
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
@@ -24,6 +27,10 @@ app.include_router(customers_router, prefix="/api/v1")
 app.include_router(products_router, prefix="/api/v1")
 app.include_router(
     quotation_requests_router,
+    prefix="/api/v1",
+)
+app.include_router(
+    quotation_files_router,
     prefix="/api/v1",
 )
 

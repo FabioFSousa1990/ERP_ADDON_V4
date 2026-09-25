@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     app_name: str = "ERP ADDON V4"
     environment: str = "development"
     database_url: str = "sqlite:///./storage/erp_addon_v4.db"
+    storage_root: str = "storage/uploads"
 
     model_config = SettingsConfigDict(
         env_file=".env",
