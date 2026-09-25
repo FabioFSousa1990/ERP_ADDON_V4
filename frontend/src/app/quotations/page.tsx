@@ -1,9 +1,10 @@
 "use client";
-
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CircleCheckBig,
   Clock3,
+  Eye,
   FileText,
   LoaderCircle,
   Pencil,
@@ -438,8 +439,17 @@ export default function QuotationsPage() {
                         <QuotationStatusBadge status={quotation.status} />
                       </td>
                       
-                      <td className="px-5 py-4">
-  <div className="flex justify-end">
+  <td className="px-5 py-4">
+  <div className="flex justify-end gap-2">
+    <Link
+      href={`/quotations/${quotation.id}`}
+      title="Abrir pedido"
+      aria-label="Abrir pedido de cotação"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+    >
+      <Eye size={15} />
+    </Link>
+
     <button
       type="button"
       onClick={() => openEditForm(quotation)}
