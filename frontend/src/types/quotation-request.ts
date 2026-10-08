@@ -18,6 +18,7 @@ export type QuotationQuantity = {
 export type QuotationRequest = {
   id: string;
   product_id: string;
+  source_folder_path: string | null;
   received_date: string;
   requested_deadline: string | null;
   status: QuotationStatus;
@@ -30,6 +31,7 @@ export type QuotationRequest = {
 
 export type QuotationRequestCreate = {
   product_id: string;
+  source_folder_path: string | null;
   received_date: string;
   requested_deadline: string | null;
   status: QuotationStatus;

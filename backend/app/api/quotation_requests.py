@@ -83,7 +83,11 @@ def validate_product(
 
 
 def normalize_optional_fields(changes: dict) -> dict:
-    for field in {"customer_contact", "notes"}:
+    for field in {
+        "customer_contact",
+        "notes",
+        "source_folder_path",
+    }:
         value = changes.get(field)
 
         if isinstance(value, str):
@@ -294,7 +298,8 @@ def update_quotation_request(
             QuotationQuantity(quantity=quantity)
             for quantity in quantities
         )
-        database.commit()
+
+    database.commit()
 
     return get_quotation_request_or_404(
         quotation_request.id,

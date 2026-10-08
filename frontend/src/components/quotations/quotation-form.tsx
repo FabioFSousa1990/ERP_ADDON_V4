@@ -26,6 +26,7 @@ type QuotationFormProps = {
 type FormState = {
   customer_id: string;
   product_id: string;
+  source_folder_path: string;
   received_date: string;
   requested_deadline: string;
   status: QuotationStatus;
@@ -71,6 +72,7 @@ function initialForm(
   return {
     customer_id: product?.customer_id ?? "",
     product_id: quotation?.product_id ?? "",
+    source_folder_path: quotation?.source_folder_path ?? "",
     received_date: quotation?.received_date ?? today(),
     requested_deadline: quotation?.requested_deadline ?? "",
     status: quotation?.status ?? "received",
@@ -156,6 +158,7 @@ export function QuotationForm({
 
       await onSubmit({
         product_id: form.product_id,
+        source_folder_path: form.source_folder_path.trim() || null,
         received_date: form.received_date,
         requested_deadline: form.requested_deadline || null,
         status: form.status,
@@ -282,7 +285,28 @@ export function QuotationForm({
               ))}
             </select>
           </label>
+<label className="block">
+  <span className="mb-1.5 block text-sm font-medium text-slate-700">
+    Pasta dos ficheiros no servidor
+  </span>
 
+  <input
+    value={form.source_folder_path}
+    onChange={(event) =>
+      setForm((current) => ({
+        ...current,
+        source_folder_path: event.target.value,
+      }))
+    }
+    className={inputClass}
+    placeholder="\\servidor\Clientes\Cliente\Produto\Cotação"
+  />
+
+  <span className="mt-1.5 block text-xs text-slate-500">
+    A aplicação analisará esta pasta sem alterar os ficheiros
+    originais.
+  </span>
+</label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-slate-700">

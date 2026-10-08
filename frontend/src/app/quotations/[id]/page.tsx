@@ -1,5 +1,6 @@
 "use client";
 import { QuotationFilesPanel } from "@/components/quotations/quotation-files-panel";
+import { QuotationSourceFolderPanel } from "@/components/quotations/quotation-source-folder-panel";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -46,7 +47,7 @@ function formatDate(value: string | null) {
 export default function QuotationDetailPage() {
   const params = useParams<{ id: string }>();
   const quotationId = params.id;
-
+  const [filesRefreshKey, setFilesRefreshKey] = useState(0);
   const [quotation, setQuotation] =
     useState<QuotationRequest | null>(null);
   const [product, setProduct] = useState<Product | null>(null);
@@ -251,7 +252,18 @@ export default function QuotationDetailPage() {
         </div>
       </section>
 
-<QuotationFilesPanel quotationRequestId={quotation.id} />
+<QuotationSourceFolderPanel
+  quotationRequestId={quotation.id}
+  sourceFolderPath={quotation.source_folder_path}
+  onImported={() =>
+    setFilesRefreshKey((current) => current + 1)
+  }
+/>
+
+<QuotationFilesPanel
+  quotationRequestId={quotation.id}
+  refreshKey={filesRefreshKey}
+/>
     </div>
   );
 }

@@ -29,6 +29,7 @@ import type {
 
 type QuotationFilesPanelProps = {
   quotationRequestId: string;
+  refreshKey?: number;
 };
 
 
@@ -69,6 +70,7 @@ function formatDate(value: string) {
 
 export function QuotationFilesPanel({
   quotationRequestId,
+  refreshKey = 0,
 }: QuotationFilesPanelProps) {
   const [files, setFiles] = useState<QuotationFile[]>([]);
   const [fileType, setFileType] =
@@ -117,7 +119,7 @@ const [editNotes, setEditNotes] = useState("");
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [loadFiles]);
+  }, [loadFiles, refreshKey]);
 
   function closeUpload() {
     if (uploading) {

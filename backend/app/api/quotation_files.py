@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from pathlib import Path
 from typing import Annotated
-
+import mimetypes
 from fastapi import (
     APIRouter,
     Depends,
@@ -16,7 +16,7 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-
+from datetime import datetime
 from backend.app.core.config import settings
 from backend.app.database import get_db
 from backend.app.models.quotation_file import QuotationFile
@@ -27,15 +27,149 @@ from backend.app.schemas.quotation_file import (
     QuotationFileType,
     QuotationFileUpdate,
 )
-
-
+from backend.app.schemas.source_folder import (
+    SourceFileCandidate,
+    SourceFileImportItem,
+    SourceFolderImportRequest,
+    SourceFolderImportResponse,
+    SourceFolderScanResponse,
+)
 router = APIRouter(tags=["quotation files"])
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 MAX_FILE_SIZE = 100 * 1024 * 1024
 CHUNK_SIZE = 1024 * 1024
+MAX_SOURCE_FILES = 500
 
+GERBER_EXTENSIONS = {
+    ".gbr",
+    ".ger",
+    ".gtl",
+    ".gbl",
+    ".gts",
+    ".gbs",
+    ".gto",
+    ".gbo",
+    ".gm1",
+    ".gko",
+    ".drl",
+    ".xln",
+}
+
+IGNORED_SUFFIXES = {
+    ".tmp",
+    ".bak",
+    ".uploading",
+}
+
+
+def get_allowed_source_roots() -> list[Path]:
+    return [
+        Path(value.strip()).resolve()
+        for value in settings.source_roots.split(";")
+        if value.strip()
+    ]
+
+
+def get_source_folder(quotation: QuotationRequest) -> Path:
+    if not quotation.source_folder_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A cotação não tem uma pasta de origem definida.",
+        )
+
+    source_folder = Path(quotation.source_folder_path).resolve()
+
+    allowed = any(
+        source_folder == root or source_folder.is_relative_to(root)
+        for root in get_allowed_source_roots()
+    )
+
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "A pasta indicada está fora das localizações "
+                "autorizadas."
+            ),
+        )
+
+    if not source_folder.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="A pasta de origem não foi encontrada.",
+        )
+
+    if not source_folder.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="O caminho indicado não corresponde a uma pasta.",
+        )
+
+    return source_folder
+
+
+def classify_source_file(file_path: Path) -> QuotationFileType:
+    name = file_path.name.lower()
+    suffix = file_path.suffix.lower()
+
+    if suffix in GERBER_EXTENSIONS:
+        return "gerbers"
+
+    if "gerber" in name:
+        return "gerbers"
+
+    if any(
+        keyword in name
+        for keyword in {
+            "bom",
+            "bill of material",
+            "bill_of_material",
+            "bill-of-material",
+        }
+    ):
+        return "bom"
+
+    if any(
+        keyword in name
+        for keyword in {
+            "pickplace",
+            "pick_place",
+            "pick-place",
+            "pick and place",
+            "centroid",
+            "pnp",
+            "coordinate",
+            "coordinates",
+        }
+    ):
+        return "pick_place"
+
+    if any(
+        keyword in name
+        for keyword in {
+            "assembly",
+            "assy",
+            "placement",
+            "implantation",
+        }
+    ):
+        return "assembly"
+
+    if any(
+        keyword in name
+        for keyword in {
+            "drawing",
+            "desenho",
+            "mechanical",
+            "mecânico",
+            "mecanico",
+        }
+    ):
+        return "drawing"
+
+    return "other"
 
 def get_quotation_or_404(
     quotation_request_id: uuid.UUID,
@@ -103,10 +237,255 @@ def get_storage_path(quotation_file: QuotationFile) -> Path:
     return file_path
 
 
+
+
+@router.post(
+    "/quotation-requests/{quotation_request_id}/source-folder/scan",
+    response_model=SourceFolderScanResponse,
+)
+def scan_quotation_source_folder(
+    quotation_request_id: uuid.UUID,
+    database: DatabaseSession,
+) -> SourceFolderScanResponse:
+    quotation = get_quotation_or_404(
+        quotation_request_id,
+        database,
+    )
+    source_folder = get_source_folder(quotation)
+    imported_signatures = {
+        (original_name.lower(), size_bytes)
+        for original_name, size_bytes in database.execute(
+            select(
+                QuotationFile.original_name,
+                QuotationFile.size_bytes,
+            ).where(
+                QuotationFile.quotation_request_id
+                == quotation_request_id
+            )
+        ).all()
+    }
+
+    items: list[SourceFileCandidate] = []
+    truncated = False
+
+    for candidate in source_folder.rglob("*"):
+        if len(items) >= MAX_SOURCE_FILES:
+            truncated = True
+            break
+
+        try:
+            if not candidate.is_file() or candidate.is_symlink():
+                continue
+
+            relative_path = candidate.relative_to(source_folder)
+
+            if any(part.startswith(".") for part in relative_path.parts):
+                continue
+
+            if candidate.name.startswith("~$"):
+                continue
+
+            if candidate.suffix.lower() in IGNORED_SUFFIXES:
+                continue
+
+            file_stat = candidate.stat()
+
+            items.append(
+                SourceFileCandidate(
+                    relative_path=relative_path.as_posix(),
+                    name=candidate.name,
+                    size_bytes=file_stat.st_size,
+                    modified_at=datetime.fromtimestamp(
+                        file_stat.st_mtime
+                    ).astimezone(),
+                    suggested_type=classify_source_file(candidate),
+                    already_imported=(
+                        candidate.name.lower(),
+                        file_stat.st_size,
+                    ) in imported_signatures,
+                )
+            )
+        except (OSError, ValueError):
+            continue
+
+    items.sort(
+        key=lambda item: (
+            item.suggested_type,
+            item.relative_path.lower(),
+        )
+    )
+
+    return SourceFolderScanResponse(
+        source_folder_path=str(source_folder),
+        items=items,
+        total=len(items),
+        truncated=truncated,
+    )
+
+@router.post(
+    "/quotation-requests/{quotation_request_id}/source-folder/import",
+    response_model=SourceFolderImportResponse,
+)
+def import_quotation_source_files(
+    quotation_request_id: uuid.UUID,
+    payload: SourceFolderImportRequest,
+    database: DatabaseSession,
+) -> SourceFolderImportResponse:
+    quotation = get_quotation_or_404(
+        quotation_request_id,
+        database,
+    )
+    source_folder = get_source_folder(quotation)
+
+    relative_directory = (
+        Path("quotation_requests")
+        / str(quotation_request_id)
+    )
+
+    storage_root = Path(settings.storage_root).resolve()
+    target_directory = storage_root / relative_directory
+    target_directory.mkdir(parents=True, exist_ok=True)
+
+    imported_files: list[QuotationFile] = []
+    created_paths: list[Path] = []
+    temporary_paths: list[Path] = []
+    skipped_duplicates = 0
+
+    try:
+        for item in payload.items:
+            source_path = (
+                source_folder / item.relative_path
+            ).resolve()
+
+            if not source_path.is_relative_to(source_folder):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Foi indicado um caminho fora da pasta "
+                        "de origem."
+                    ),
+                )
+
+            if (
+                not source_path.is_file()
+                or source_path.is_symlink()
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=(
+                        f"O ficheiro {item.relative_path} "
+                        "não foi encontrado."
+                    ),
+                )
+
+            original_name = source_path.name[:500]
+            suffix = source_path.suffix.lower()[:20]
+            stored_name = f"{uuid.uuid4().hex}{suffix}"
+
+            relative_path = (
+                relative_directory / stored_name
+            )
+            target_path = target_directory / stored_name
+            temporary_path = (
+                target_directory / f"{stored_name}.importing"
+            )
+            temporary_paths.append(temporary_path)
+
+            file_size = 0
+            digest = hashlib.sha256()
+
+            with source_path.open("rb") as source:
+                with temporary_path.open("wb") as destination:
+                    while chunk := source.read(CHUNK_SIZE):
+                        file_size += len(chunk)
+
+                        if file_size > MAX_FILE_SIZE:
+                            raise HTTPException(
+                                status_code=(
+                                    status.HTTP_413_CONTENT_TOO_LARGE
+                                ),
+                                detail=(
+                                    f"O ficheiro {original_name} "
+                                    "excede o limite de 100 MB."
+                                ),
+                            )
+
+                        digest.update(chunk)
+                        destination.write(chunk)
+
+            file_hash = digest.hexdigest()
+
+            duplicate = database.scalar(
+                select(QuotationFile).where(
+                    QuotationFile.quotation_request_id
+                    == quotation_request_id,
+                    QuotationFile.sha256 == file_hash,
+                )
+            )
+
+            if duplicate is not None:
+                temporary_path.unlink(missing_ok=True)
+                temporary_paths.remove(temporary_path)
+                skipped_duplicates += 1
+                continue
+
+            temporary_path.replace(target_path)
+            temporary_paths.remove(temporary_path)
+            created_paths.append(target_path)
+
+            media_type, _ = mimetypes.guess_type(original_name)
+
+            quotation_file = QuotationFile(
+                quotation_request_id=quotation_request_id,
+                file_type=item.file_type,
+                original_name=original_name,
+                stored_name=stored_name,
+                relative_path=relative_path.as_posix(),
+                media_type=media_type,
+                size_bytes=file_size,
+                sha256=file_hash,
+                revision=(
+                    item.revision.strip()
+                    if item.revision
+                    else None
+                ),
+                notes=(
+                    item.notes.strip()
+                    if item.notes
+                    else None
+                ),
+            )
+
+            database.add(quotation_file)
+            database.flush()
+            imported_files.append(quotation_file)
+
+        database.commit()
+
+        for quotation_file in imported_files:
+            database.refresh(quotation_file)
+
+        return SourceFolderImportResponse(
+            items=imported_files,
+            imported=len(imported_files),
+            skipped_duplicates=skipped_duplicates,
+        )
+    except Exception:
+        database.rollback()
+
+        for temporary_path in temporary_paths:
+            temporary_path.unlink(missing_ok=True)
+
+        for created_path in created_paths:
+            created_path.unlink(missing_ok=True)
+
+        raise
+
 @router.get(
     "/quotation-requests/{quotation_request_id}/files",
     response_model=QuotationFileListResponse,
 )
+
 def list_quotation_files(
     quotation_request_id: uuid.UUID,
     database: DatabaseSession,

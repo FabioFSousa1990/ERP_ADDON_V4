@@ -35,6 +35,11 @@ class QuotationRequest(Base):
         index=True,
     )
 
+    source_folder_path: Mapped[str | None] = mapped_column(
+        String(1000),
+        nullable=True,
+    )
+
     received_date: Mapped[date] = mapped_column(
         Date,
         nullable=False,

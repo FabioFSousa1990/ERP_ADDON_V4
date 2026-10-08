@@ -29,3 +29,36 @@ export type QuotationFileListResponse = {
   items: QuotationFile[];
   total: number;
 };
+
+export type SourceFileCandidate = {
+  relative_path: string;
+  name: string;
+  size_bytes: number;
+  modified_at: string;
+  suggested_type: QuotationFileType;
+  already_imported: boolean;
+};
+
+export type SourceFolderScanResponse = {
+  source_folder_path: string;
+  items: SourceFileCandidate[];
+  total: number;
+  truncated: boolean;
+};
+
+export type SourceFileImportItem = {
+  relative_path: string;
+  file_type: QuotationFileType;
+  revision: string | null;
+  notes: string | null;
+};
+
+export type SourceFolderImportRequest = {
+  items: SourceFileImportItem[];
+};
+
+export type SourceFolderImportResponse = {
+  items: QuotationFile[];
+  imported: number;
+  skipped_duplicates: number;
+};

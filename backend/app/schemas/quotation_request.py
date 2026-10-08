@@ -27,6 +27,7 @@ PositiveQuantity = Annotated[int, Field(gt=0)]
 
 class QuotationRequestCreate(BaseModel):
     product_id: uuid.UUID
+    source_folder_path: str | None = None
     received_date: date = Field(default_factory=date.today)
     requested_deadline: date | None = None
     status: QuotationStatus = "received"
@@ -45,6 +46,7 @@ class QuotationRequestCreate(BaseModel):
 
 class QuotationRequestUpdate(BaseModel):
     product_id: uuid.UUID | None = None
+    source_folder_path: str | None = None
     received_date: date | None = None
     requested_deadline: date | None = None
     status: QuotationStatus | None = None
@@ -72,7 +74,6 @@ class QuotationRequestUpdate(BaseModel):
 
 class QuotationQuantityRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
     quantity: int
     created_at: datetime
@@ -83,6 +84,7 @@ class QuotationRequestRead(BaseModel):
 
     id: uuid.UUID
     product_id: uuid.UUID
+    source_folder_path: str | None
     received_date: date
     requested_deadline: date | None
     status: QuotationStatus
