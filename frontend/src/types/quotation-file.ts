@@ -62,3 +62,24 @@ export type SourceFolderImportResponse = {
   imported: number;
   skipped_duplicates: number;
 };
+
+export type SourceRootOption = {
+  index: number;
+  name: string;
+  path: string;
+};
+
+export type SourceDirectoryEntry = {
+  name: string;
+  relative_path: string;
+};
+
+export type SourceFolderBrowseResponse = {
+  roots: SourceRootOption[];
+  root_index: number;
+  root_path: string;
+  current_path: string;
+  current_relative_path: string;
+  parent_relative_path: string | null;
+  directories: SourceDirectoryEntry[];
+};

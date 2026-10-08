@@ -40,3 +40,23 @@ class SourceFolderImportResponse(BaseModel):
     items: list[QuotationFileRead]
     imported: int
     skipped_duplicates: int
+
+class SourceRootOption(BaseModel):
+    index: int
+    name: str
+    path: str
+
+
+class SourceDirectoryEntry(BaseModel):
+    name: str
+    relative_path: str
+
+
+class SourceFolderBrowseResponse(BaseModel):
+    roots: list[SourceRootOption]
+    root_index: int
+    root_path: str
+    current_path: str
+    current_relative_path: str
+    parent_relative_path: str | None
+    directories: list[SourceDirectoryEntry]

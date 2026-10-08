@@ -1,7 +1,11 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { LoaderCircle, X } from "lucide-react";
+import {
+  FolderSearch,
+  LoaderCircle,
+  X,
+} from "lucide-react";
 
 import type { Customer } from "@/types/customer";
 import type { Product } from "@/types/product";
@@ -10,7 +14,7 @@ import type {
   QuotationRequestCreate,
   QuotationStatus,
 } from "@/types/quotation-request";
-
+import { QuotationSourceFolderBrowser } from "@/components/quotations/quotation-source-folder-browser";
 
 type QuotationFormProps = {
   quotation: QuotationRequest | null;
@@ -126,6 +130,8 @@ export function QuotationForm({
   const [form, setForm] = useState<FormState>(() =>
     initialForm(quotation, products),
   );
+  const [showFolderBrowser, setShowFolderBrowser] =
+  useState(false);
   const [validationError, setValidationError] = useState<string | null>(
     null,
   );
@@ -290,6 +296,7 @@ export function QuotationForm({
     Pasta dos ficheiros no servidor
   </span>
 
+<div className="flex gap-2">
   <input
     value={form.source_folder_path}
     onChange={(event) =>
@@ -301,6 +308,16 @@ export function QuotationForm({
     className={inputClass}
     placeholder="\\servidor\Clientes\Cliente\Produto\Cotação"
   />
+
+  <button
+    type="button"
+    onClick={() => setShowFolderBrowser(true)}
+    className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+  >
+    <FolderSearch size={17} />
+    Procurar
+  </button>
+</div>
 
   <span className="mt-1.5 block text-xs text-slate-500">
     A aplicação analisará esta pasta sem alterar os ficheiros
@@ -455,6 +472,18 @@ export function QuotationForm({
           </button>
         </footer>
       </aside>
+
+      {showFolderBrowser && (
+        <QuotationSourceFolderBrowser
+          onClose={() => setShowFolderBrowser(false)}
+          onSelect={(path) =>
+            setForm((current) => ({
+              ...current,
+              source_folder_path: path,
+            }))
+          }
+        />
+      )}
     </div>
   );
 }

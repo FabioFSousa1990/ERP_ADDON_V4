@@ -28,11 +28,14 @@ from backend.app.schemas.quotation_file import (
     QuotationFileUpdate,
 )
 from backend.app.schemas.source_folder import (
+    SourceDirectoryEntry,
     SourceFileCandidate,
     SourceFileImportItem,
+    SourceFolderBrowseResponse,
     SourceFolderImportRequest,
     SourceFolderImportResponse,
     SourceFolderScanResponse,
+    SourceRootOption,
 )
 router = APIRouter(tags=["quotation files"])
 
@@ -41,6 +44,7 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 MAX_FILE_SIZE = 100 * 1024 * 1024
 CHUNK_SIZE = 1024 * 1024
 MAX_SOURCE_FILES = 500
+MAX_SOURCE_DIRECTORIES = 500
 
 GERBER_EXTENSIONS = {
     ".gbr",
@@ -112,16 +116,17 @@ def get_source_folder(quotation: QuotationRequest) -> Path:
 
 def classify_source_file(file_path: Path) -> QuotationFileType:
     name = file_path.name.lower()
+    path_text = file_path.as_posix().lower()
     suffix = file_path.suffix.lower()
 
     if suffix in GERBER_EXTENSIONS:
         return "gerbers"
 
-    if "gerber" in name:
+    if "gerber" in path_text:
         return "gerbers"
 
     if any(
-        keyword in name
+        keyword in path_text
         for keyword in {
             "bom",
             "bill of material",
@@ -132,7 +137,7 @@ def classify_source_file(file_path: Path) -> QuotationFileType:
         return "bom"
 
     if any(
-        keyword in name
+        keyword in path_text
         for keyword in {
             "pickplace",
             "pick_place",
@@ -147,7 +152,7 @@ def classify_source_file(file_path: Path) -> QuotationFileType:
         return "pick_place"
 
     if any(
-        keyword in name
+        keyword in path_text
         for keyword in {
             "assembly",
             "assy",
@@ -158,7 +163,7 @@ def classify_source_file(file_path: Path) -> QuotationFileType:
         return "assembly"
 
     if any(
-        keyword in name
+        keyword in path_text
         for keyword in {
             "drawing",
             "desenho",
@@ -237,7 +242,119 @@ def get_storage_path(quotation_file: QuotationFile) -> Path:
     return file_path
 
 
+@router.get(
+    "/source-folders/browse",
+    response_model=SourceFolderBrowseResponse,
+)
+def browse_source_folders(
+    root_index: Annotated[int, Query(ge=0)] = 0,
+    relative_path: str = "",
+) -> SourceFolderBrowseResponse:
+    roots = get_allowed_source_roots()
 
+    if not roots:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não existem pastas de origem configuradas.",
+        )
+
+    if root_index >= len(roots):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A raiz indicada não é válida.",
+        )
+
+    root = roots[root_index]
+
+    if not root.exists() or not root.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="A raiz configurada não está disponível.",
+        )
+
+    current_path = (root / relative_path).resolve()
+
+    if not (
+        current_path == root
+        or current_path.is_relative_to(root)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Não é permitido navegar fora da raiz autorizada.",
+        )
+
+    if not current_path.exists() or not current_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="A pasta indicada não foi encontrada.",
+        )
+
+    directories: list[SourceDirectoryEntry] = []
+
+    try:
+        children = sorted(
+            (
+                child
+                for child in current_path.iterdir()
+                if (
+                    child.is_dir()
+                    and not child.is_symlink()
+                    and not child.name.startswith(".")
+                )
+            ),
+            key=lambda child: child.name.lower(),
+        )
+
+        for child in children[:MAX_SOURCE_DIRECTORIES]:
+            directories.append(
+                SourceDirectoryEntry(
+                    name=child.name,
+                    relative_path=(
+                        child.relative_to(root).as_posix()
+                    ),
+                )
+            )
+    except OSError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Não foi possível aceder a esta pasta.",
+        ) from error
+
+    current_relative_path = (
+        current_path.relative_to(root).as_posix()
+    )
+
+    if current_relative_path == ".":
+        current_relative_path = ""
+
+    parent_relative_path: str | None = None
+
+    if current_path != root:
+        parent_relative_path = (
+            current_path.parent.relative_to(root).as_posix()
+        )
+
+        if parent_relative_path == ".":
+            parent_relative_path = ""
+
+    root_options = [
+        SourceRootOption(
+            index=index,
+            name=source_root.name or str(source_root),
+            path=str(source_root),
+        )
+        for index, source_root in enumerate(roots)
+    ]
+
+    return SourceFolderBrowseResponse(
+        roots=root_options,
+        root_index=root_index,
+        root_path=str(root),
+        current_path=str(current_path),
+        current_relative_path=current_relative_path,
+        parent_relative_path=parent_relative_path,
+        directories=directories,
+    )
 
 @router.post(
     "/quotation-requests/{quotation_request_id}/source-folder/scan",
@@ -485,7 +602,6 @@ def import_quotation_source_files(
     "/quotation-requests/{quotation_request_id}/files",
     response_model=QuotationFileListResponse,
 )
-
 def list_quotation_files(
     quotation_request_id: uuid.UUID,
     database: DatabaseSession,

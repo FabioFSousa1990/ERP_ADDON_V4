@@ -10,14 +10,22 @@ import {
   FileText,
   LoaderCircle,
   Package,
+  Pencil,
   UserRound,
 } from "lucide-react";
-
+import { QuotationForm } from "@/components/quotations/quotation-form";
 import { apiRequest } from "@/lib/api";
-import type { Customer } from "@/types/customer";
-import type { Product } from "@/types/product";
+import type {
+  Customer,
+  CustomerListResponse,
+} from "@/types/customer";
+import type {
+  Product,
+  ProductListResponse,
+} from "@/types/product";
 import type {
   QuotationRequest,
+  QuotationRequestCreate,
   QuotationStatus,
 } from "@/types/quotation-request";
 
@@ -52,6 +60,11 @@ export default function QuotationDetailPage() {
     useState<QuotationRequest | null>(null);
   const [product, setProduct] = useState<Product | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,13 +81,27 @@ export default function QuotationDetailPage() {
         `/products/${quotationData.product_id}`,
       );
 
-      const customerData = await apiRequest<Customer>(
-        `/customers/${productData.customer_id}`,
-      );
+      const [
+        customerData,
+        customersData,
+        productsData,
+      ] = await Promise.all([
+        apiRequest<Customer>(
+          `/customers/${productData.customer_id}`,
+        ),
+        apiRequest<CustomerListResponse>(
+          "/customers?include_inactive=true&limit=200",
+        ),
+        apiRequest<ProductListResponse>(
+          "/products?include_inactive=true&limit=200",
+        ),
+      ]);
 
       setQuotation(quotationData);
       setProduct(productData);
       setCustomer(customerData);
+      setCustomers(customersData.items);
+      setProducts(productsData.items);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -93,6 +120,49 @@ export default function QuotationDetailPage() {
 
     return () => window.clearTimeout(timer);
   }, [loadQuotation]);
+
+  function openEditForm() {
+  setFormError(null);
+  setShowEditForm(true);
+}
+
+function closeEditForm() {
+  if (saving) {
+    return;
+  }
+
+  setFormError(null);
+  setShowEditForm(false);
+}
+
+async function saveQuotation(
+  payload: QuotationRequestCreate,
+) {
+  setSaving(true);
+  setFormError(null);
+
+  try {
+    await apiRequest<QuotationRequest>(
+      `/quotation-requests/${quotationId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      },
+    );
+
+    setShowEditForm(false);
+    await loadQuotation();
+  } catch (requestError) {
+    setFormError(
+      requestError instanceof Error
+        ? requestError.message
+        : "Não foi possível atualizar a cotação.",
+    );
+  } finally {
+    setSaving(false);
+  }
+}
+
 
   if (loading) {
     return (
@@ -155,9 +225,20 @@ export default function QuotationDetailPage() {
             </p>
           </div>
 
-          <span className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
-            {statusLabels[quotation.status]}
-          </span>
+<div className="flex items-center gap-3">
+  <span className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
+    {statusLabels[quotation.status]}
+  </span>
+
+  <button
+    type="button"
+    onClick={openEditForm}
+    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+  >
+    <Pencil size={16} />
+    Editar cotação
+  </button>
+</div>
         </div>
       </header>
 
@@ -264,6 +345,17 @@ export default function QuotationDetailPage() {
   quotationRequestId={quotation.id}
   refreshKey={filesRefreshKey}
 />
+{showEditForm && (
+  <QuotationForm
+    quotation={quotation}
+    customers={customers}
+    products={products}
+    saving={saving}
+    error={formError}
+    onClose={closeEditForm}
+    onSubmit={saveQuotation}
+  />
+)}
     </div>
   );
 }
