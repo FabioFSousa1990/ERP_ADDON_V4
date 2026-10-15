@@ -37,6 +37,16 @@ from backend.app.schemas.source_folder import (
     SourceFolderScanResponse,
     SourceRootOption,
 )
+
+from backend.app.schemas.gerber_analysis import (
+    GerberAnalysisResponse,
+)
+from backend.app.services.gerber_analysis import (
+    GerberAnalysisError,
+    inspect_gerber_archive,
+)
+
+
 router = APIRouter(tags=["quotation files"])
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -75,7 +85,6 @@ def get_allowed_source_roots() -> list[Path]:
         if value.strip()
     ]
 
-
 def get_source_folder(quotation: QuotationRequest) -> Path:
     if not quotation.source_folder_path:
         raise HTTPException(
@@ -112,7 +121,6 @@ def get_source_folder(quotation: QuotationRequest) -> Path:
         )
 
     return source_folder
-
 
 def classify_source_file(file_path: Path) -> QuotationFileType:
     name = file_path.name.lower()
@@ -193,7 +201,6 @@ def get_quotation_or_404(
 
     return quotation
 
-
 def get_file_or_404(
     file_id: uuid.UUID,
     database: Session,
@@ -207,7 +214,6 @@ def get_file_or_404(
         )
 
     return quotation_file
-
 
 def normalize_original_name(filename: str | None) -> str:
     if not filename:
@@ -226,7 +232,6 @@ def normalize_original_name(filename: str | None) -> str:
 
     return original_name[:500]
 
-
 def get_storage_path(quotation_file: QuotationFile) -> Path:
     storage_root = Path(settings.storage_root).resolve()
     file_path = (
@@ -240,7 +245,6 @@ def get_storage_path(quotation_file: QuotationFile) -> Path:
         )
 
     return file_path
-
 
 @router.get(
     "/source-folders/browse",
@@ -640,6 +644,40 @@ def list_quotation_files(
         total=total,
     )
 
+@router.post(
+    "/quotation-files/{file_id}/analyze-gerbers",
+    response_model=GerberAnalysisResponse,
+)
+def analyze_gerber_file(
+    file_id: uuid.UUID,
+    database: DatabaseSession,
+) -> GerberAnalysisResponse:
+    quotation_file = get_file_or_404(file_id, database)
+
+    if quotation_file.file_type != "gerbers":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "A análise Gerber só pode ser executada "
+                "em ficheiros do tipo Gerbers."
+            ),
+        )
+
+    file_path = get_storage_path(quotation_file)
+
+    try:
+        metadata = inspect_gerber_archive(file_path)
+    except GerberAnalysisError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+
+    return GerberAnalysisResponse(
+        quotation_file_id=quotation_file.id,
+        original_name=quotation_file.original_name,
+        metadata=metadata,
+    )
 
 @router.post(
     "/quotation-requests/{quotation_request_id}/files",
@@ -740,7 +778,6 @@ def upload_quotation_file(
 
         raise
 
-
 @router.get(
     "/quotation-files/{file_id}/download",
     response_class=FileResponse,
@@ -763,7 +800,6 @@ def download_quotation_file(
         media_type=quotation_file.media_type,
         filename=quotation_file.original_name,
     )
-
 
 @router.patch(
     "/quotation-files/{file_id}",
@@ -796,7 +832,6 @@ def update_quotation_file(
     database.refresh(quotation_file)
 
     return quotation_file
-
 
 @router.delete(
     "/quotation-files/{file_id}",

@@ -12,7 +12,7 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-
+from backend.app.models.quotation_file import QuotationFile
 from backend.app.core.config import settings
 from backend.app.database import get_db
 from backend.app.models.quotation_artifact import QuotationArtifact
@@ -23,7 +23,11 @@ from backend.app.schemas.quotation_artifact import (
     QuotationArtifactType,
 )
 from backend.app.services.artifact_generation import (
+    generate_gerber_preview_artifacts,
     generate_validation_report,
+)
+from backend.app.services.gerber_analysis import (
+    GerberAnalysisError,
 )
 
 router = APIRouter(tags=["quotation artifacts"])
@@ -145,6 +149,63 @@ def create_validation_report(
         database,
     )
 
+@router.post(
+    "/quotation-files/{file_id}/generate-pcb-previews",
+    response_model=QuotationArtifactListResponse,
+)
+def create_pcb_previews(
+    file_id: uuid.UUID,
+    database: DatabaseSession,
+) -> QuotationArtifactListResponse:
+    source_file = database.get(QuotationFile, file_id)
+
+    if source_file is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ficheiro Gerber não encontrado.",
+        )
+
+    if source_file.file_type != "gerbers":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "As vistas da PCB só podem ser geradas "
+                "a partir de um ficheiro do tipo Gerbers."
+            ),
+        )
+
+    quotation_request = get_quotation_or_404(
+        source_file.quotation_request_id,
+        database,
+    )
+
+    try:
+        artifacts = generate_gerber_preview_artifacts(
+            quotation_request,
+            source_file,
+            database,
+        )
+    except GerberAnalysisError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(error),
+        ) from error
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+
+    return QuotationArtifactListResponse(
+        items=artifacts,
+        total=len(artifacts),
+    )
+
 @router.get(
     "/quotation-artifacts/{artifact_id}/download",
     response_class=FileResponse,
@@ -168,6 +229,49 @@ def download_quotation_artifact(
         filename=artifact.display_name,
     )
 
+@router.get(
+    "/quotation-artifacts/{artifact_id}/view",
+    response_class=FileResponse,
+)
+def view_quotation_artifact(
+    artifact_id: uuid.UUID,
+    database: DatabaseSession,
+) -> FileResponse:
+    artifact = get_artifact_or_404(
+        artifact_id,
+        database,
+    )
+
+    if (
+        artifact.media_type is None
+        or not artifact.media_type.startswith("image/")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Este resultado não pode ser "
+                "apresentado como imagem."
+            ),
+        )
+
+    file_path = get_artifact_storage_path(artifact)
+
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "O ficheiro físico do resultado "
+                "não foi encontrado."
+            ),
+        )
+
+    return FileResponse(
+        path=file_path,
+        media_type=artifact.media_type,
+        headers={
+            "Content-Disposition": "inline",
+        },
+    )
 
 @router.delete(
     "/quotation-artifacts/{artifact_id}",

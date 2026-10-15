@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Download,
+  Eye,
   FileCheck2,
   LoaderCircle,
   RefreshCw,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { API_URL, apiRequest } from "@/lib/api";
@@ -23,10 +25,10 @@ type QuotationArtifactsPanelProps = {
 
 
 const artifactTypeLabels: Record<QuotationArtifactType, string> = {
-  pcb_top_preview: "PCB — vista superior",
-  pcb_bottom_preview: "PCB — vista inferior",
-  assembly_top_preview: "Assembly — vista superior",
-  assembly_bottom_preview: "Assembly — vista inferior",
+  pcb_top_preview: "PCB - vista superior",
+  pcb_bottom_preview: "PCB - vista inferior",
+  assembly_top_preview: "Assembly - vista superior",
+  assembly_bottom_preview: "Assembly - vista inferior",
   normalized_bom: "BOM normalizada",
   validation_report: "Relatório de validação",
 };
@@ -60,6 +62,8 @@ export function QuotationArtifactsPanel({
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewingArtifact, setViewingArtifact] =
+    useState<QuotationArtifact | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadArtifacts = useCallback(async () => {
@@ -148,8 +152,20 @@ export function QuotationArtifactsPanel({
     }
   }
 
-  return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+
+  const imageArtifacts = artifacts.filter(
+    (artifact) =>
+      artifact.media_type?.startsWith("image/") ?? false,
+  );
+
+  const otherArtifacts = artifacts.filter(
+    (artifact) =>
+      !artifact.media_type?.startsWith("image/"),
+  );
+
+return (
+    <>
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 p-6">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-950">
@@ -206,60 +222,207 @@ export function QuotationArtifactsPanel({
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-slate-100">
-          {artifacts.map((artifact) => (
-            <div
-              key={artifact.id}
-              className="flex flex-wrap items-center justify-between gap-4 px-6 py-4"
+
+<div>
+  {imageArtifacts.length > 0 && (
+    <div className="grid gap-5 p-6 md:grid-cols-2">
+      {imageArtifacts.map((artifact) => (
+        <article
+          key={artifact.id}
+          className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+        >
+          <button
+            type="button"
+            onClick={() => setViewingArtifact(artifact)}
+            className="group relative flex h-52 w-full items-center justify-center overflow-hidden bg-slate-100 p-3"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`${API_URL}/quotation-artifacts/${artifact.id}/view`}
+              alt={artifactTypeLabels[artifact.artifact_type]}
+              className="max-h-full max-w-full object-contain transition duration-200 group-hover:scale-[1.02]"
+            />
+
+            <span className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-lg bg-slate-950/75 px-3 py-1.5 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">
+              <Eye size={14} />
+              Ampliar
+            </span>
+          </button>
+
+          <div className="flex items-center justify-between gap-4 border-t border-slate-200 bg-white p-4">
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-slate-900">
+                {artifactTypeLabels[artifact.artifact_type]}
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                {formatFileSize(artifact.size_bytes)}
+                {" · "}
+                {formatDate(artifact.created_at)}
+              </p>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <a
+                href={`${API_URL}/quotation-artifacts/${artifact.id}/download`}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                title="Descarregar imagem"
+                aria-label={`Descarregar ${artifact.display_name}`}
+              >
+                <Download size={16} />
+              </a>
+
+              <button
+                type="button"
+                onClick={() => void deleteArtifact(artifact)}
+                disabled={deletingId === artifact.id}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Eliminar imagem"
+                aria-label={`Eliminar ${artifact.display_name}`}
+              >
+                {deletingId === artifact.id ? (
+                  <LoaderCircle
+                    size={16}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Trash2 size={16} />
+                )}
+              </button>
+            </div>
+          </div>
+        </article>
+      ))}
+    </div>
+  )}
+
+  {otherArtifacts.length > 0 && (
+    <div className="divide-y divide-slate-100 border-t border-slate-200">
+      {otherArtifacts.map((artifact) => (
+        <div
+          key={artifact.id}
+          className="flex flex-wrap items-center justify-between gap-4 px-6 py-4"
+        >
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-slate-900">
+              {artifact.display_name}
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              {artifactTypeLabels[artifact.artifact_type]}
+              {" · "}
+              {formatFileSize(artifact.size_bytes)}
+              {" · "}
+              {formatDate(artifact.created_at)}
+            </p>
+
+            <p className="mt-1 text-xs text-slate-400">
+              Gerador: {artifact.generator} v
+              {artifact.generation_version}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <a
+              href={`${API_URL}/quotation-artifacts/${artifact.id}/download`}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+              title="Descarregar resultado"
+              aria-label={`Descarregar ${artifact.display_name}`}
             >
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-slate-900">
-                  {artifact.display_name}
-                </p>
+              <Download size={16} />
+            </a>
+
+            <button
+              type="button"
+              onClick={() => void deleteArtifact(artifact)}
+              disabled={deletingId === artifact.id}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Eliminar resultado"
+              aria-label={`Eliminar ${artifact.display_name}`}
+            >
+              {deletingId === artifact.id ? (
+                <LoaderCircle
+                  size={16}
+                  className="animate-spin"
+                />
+              ) : (
+                <Trash2 size={16} />
+              )}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+
+
+
+          )}
+      </section>
+
+      {viewingArtifact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8">
+          <button
+            type="button"
+            aria-label="Fechar imagem ampliada"
+            onClick={() => setViewingArtifact(null)}
+            className="absolute inset-0 bg-slate-950/80"
+          />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              artifactTypeLabels[
+                viewingArtifact.artifact_type
+              ]
+            }
+            className="relative z-10 flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+          >
+            <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="font-semibold text-slate-950">
+                  {
+                    artifactTypeLabels[
+                      viewingArtifact.artifact_type
+                    ]
+                  }
+                </h3>
 
                 <p className="mt-1 text-xs text-slate-500">
-                  {artifactTypeLabels[artifact.artifact_type]}
+                  {formatFileSize(viewingArtifact.size_bytes)}
                   {" · "}
-                  {formatFileSize(artifact.size_bytes)}
-                  {" · "}
-                  {formatDate(artifact.created_at)}
-                </p>
-
-                <p className="mt-1 text-xs text-slate-400">
-                  Gerador: {artifact.generator} v
-                  {artifact.generation_version}
+                  {formatDate(viewingArtifact.created_at)}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <a
-                  href={`${API_URL}/quotation-artifacts/${artifact.id}/download`}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                  title="Descarregar resultado"
-                  aria-label={`Descarregar ${artifact.display_name}`}
-                >
-                  <Download size={16} />
-                </a>
+              <button
+                type="button"
+                onClick={() => setViewingArtifact(null)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
+                aria-label="Fechar"
+                title="Fechar"
+              >
+                <X size={19} />
+              </button>
+            </header>
 
-                <button
-                  type="button"
-                  onClick={() => void deleteArtifact(artifact)}
-                  disabled={deletingId === artifact.id}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Eliminar resultado"
-                  aria-label={`Eliminar ${artifact.display_name}`}
-                >
-                  {deletingId === artifact.id ? (
-                    <LoaderCircle size={16} className="animate-spin" />
-                  ) : (
-                    <Trash2 size={16} />
-                  )}
-                </button>
-              </div>
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-4 sm:p-8">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`${API_URL}/quotation-artifacts/${viewingArtifact.id}/view`}
+                alt={
+                  artifactTypeLabels[
+                    viewingArtifact.artifact_type
+                  ]
+                }
+                className="mx-auto max-h-[calc(100vh-10rem)] max-w-full object-contain"
+              />
             </div>
-          ))}
+          </div>
         </div>
       )}
-    </section>
+    </>
   );
 }
