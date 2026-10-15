@@ -18,6 +18,7 @@ from backend.app.database import Base
 if TYPE_CHECKING:
     from backend.app.models.quotation_quantity import QuotationQuantity
     from backend.app.models.quotation_file import QuotationFile
+    from backend.app.models.quotation_artifact import QuotationArtifact
 
 class QuotationRequest(Base):
     __tablename__ = "quotation_requests"
@@ -95,4 +96,11 @@ class QuotationRequest(Base):
     back_populates="quotation_request",
     cascade="all, delete-orphan",
     order_by="QuotationFile.uploaded_at",
+    )
+
+    artifacts: Mapped[list["QuotationArtifact"]] = relationship(
+        "QuotationArtifact",
+        back_populates="quotation_request",
+        cascade="all, delete-orphan",
+        order_by="QuotationArtifact.created_at",
     )

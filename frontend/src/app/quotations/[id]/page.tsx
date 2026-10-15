@@ -28,6 +28,7 @@ import type {
   QuotationRequestCreate,
   QuotationStatus,
 } from "@/types/quotation-request";
+import { QuotationArtifactsPanel } from "@/components/quotations/quotation-artifacts-panel";
 
 
 const statusLabels: Record<QuotationStatus, string> = {
@@ -344,6 +345,9 @@ async function saveQuotation(
 <QuotationFilesPanel
   quotationRequestId={quotation.id}
   refreshKey={filesRefreshKey}
+/>
+<QuotationArtifactsPanel
+  quotationRequestId={quotation.id}
 />
 {showEditForm && (
   <QuotationForm

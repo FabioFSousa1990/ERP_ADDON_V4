@@ -17,6 +17,7 @@ from backend.app.database import Base
 
 if TYPE_CHECKING:
     from backend.app.models.quotation_request import QuotationRequest
+    from backend.app.models.quotation_artifact import QuotationArtifact
 
 
 class QuotationFile(Base):
@@ -92,4 +93,10 @@ class QuotationFile(Base):
     quotation_request: Mapped["QuotationRequest"] = relationship(
         "QuotationRequest",
         back_populates="files",
+    )
+    
+    artifacts: Mapped[list["QuotationArtifact"]] = relationship(
+        "QuotationArtifact",
+        back_populates="source_file",
+        passive_deletes=True,
     )
