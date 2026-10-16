@@ -9,6 +9,7 @@ import {
 import {
   Download,
   FileText,
+  Images,
   LoaderCircle,
   Plus,
   Trash2,
@@ -25,11 +26,14 @@ import type {
   QuotationFileType,
   QuotationFileUpdate,
 } from "@/types/quotation-file";
-
+import type {
+  QuotationArtifactListResponse,
+} from "@/types/quotation-artifact";
 
 type QuotationFilesPanelProps = {
   quotationRequestId: string;
   refreshKey?: number;
+  onArtifactsChanged?: () => void;
 };
 
 
@@ -71,6 +75,7 @@ function formatDate(value: string) {
 export function QuotationFilesPanel({
   quotationRequestId,
   refreshKey = 0,
+  onArtifactsChanged,
 }: QuotationFilesPanelProps) {
   const [files, setFiles] = useState<QuotationFile[]>([]);
   const [fileType, setFileType] =
@@ -83,6 +88,8 @@ export function QuotationFilesPanel({
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] =
+    useState<string | null>(null);
+  const [generatingPreviewId, setGeneratingPreviewId] =
     useState<string | null>(null);
 const [editingId, setEditingId] = useState<string | null>(null);
 const [savingId, setSavingId] = useState<string | null>(null);
@@ -272,7 +279,31 @@ async function saveFileMetadata(fileId: string) {
     setSavingId(null);
   }
 }
+  async function generatePcbPreviews(
+    quotationFile: QuotationFile,
+  ) {
+    setGeneratingPreviewId(quotationFile.id);
+    setError(null);
 
+    try {
+      await apiRequest<QuotationArtifactListResponse>(
+        `/quotation-files/${quotationFile.id}/generate-pcb-previews`,
+        {
+          method: "POST",
+        },
+      );
+
+      onArtifactsChanged?.();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Não foi possível gerar as vistas da PCB.",
+      );
+    } finally {
+      setGeneratingPreviewId(null);
+    }
+  }
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-6 py-5">
@@ -578,6 +609,29 @@ async function saveFileMetadata(fileId: string) {
       </div>
 
       <div className="flex items-center gap-2">
+        {quotationFile.file_type === "gerbers" && (
+  <button
+    type="button"
+    onClick={() =>
+      void generatePcbPreviews(quotationFile)
+    }
+    disabled={
+      generatingPreviewId === quotationFile.id
+    }
+    title="Gerar vistas da PCB"
+    aria-label={`Gerar vistas de ${quotationFile.original_name}`}
+    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-300 text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    {generatingPreviewId === quotationFile.id ? (
+      <LoaderCircle
+        size={16}
+        className="animate-spin"
+      />
+    ) : (
+      <Images size={16} />
+    )}
+  </button>
+)}
         <a
           href={`${API_URL}/quotation-files/${quotationFile.id}/download`}
           title="Descarregar ficheiro"
@@ -621,6 +675,24 @@ async function saveFileMetadata(fileId: string) {
 
         </div>
       )}
+      {generatingPreviewId && (
+  <div className="fixed bottom-6 right-6 z-50 flex max-w-md items-start gap-3 rounded-xl border border-emerald-200 bg-white p-4 shadow-2xl">
+    <LoaderCircle
+      size={20}
+      className="mt-0.5 shrink-0 animate-spin text-emerald-600"
+    />
+
+    <div>
+      <p className="font-semibold text-slate-950">
+        A gerar imagens da PCB
+      </p>
+
+      <p className="mt-1 text-sm text-slate-600">
+        A analisar os Gerbers. Este processo pode demorar alguns segundos.
+      </p>
+    </div>
+  </div>
+)}
     </section>
   );
 }

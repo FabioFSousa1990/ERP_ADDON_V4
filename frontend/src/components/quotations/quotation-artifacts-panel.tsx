@@ -21,6 +21,7 @@ import type {
 
 type QuotationArtifactsPanelProps = {
   quotationRequestId: string;
+  refreshKey?: number;
 };
 
 
@@ -57,6 +58,7 @@ function formatDate(value: string) {
 
 export function QuotationArtifactsPanel({
   quotationRequestId,
+  refreshKey = 0,
 }: QuotationArtifactsPanelProps) {
   const [artifacts, setArtifacts] = useState<QuotationArtifact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +95,7 @@ export function QuotationArtifactsPanel({
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [loadArtifacts]);
+  }, [loadArtifacts, refreshKey]);
 
   async function generateValidationReport() {
     setGenerating(true);

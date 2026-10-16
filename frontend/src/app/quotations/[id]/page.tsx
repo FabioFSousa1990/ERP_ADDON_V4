@@ -57,6 +57,8 @@ export default function QuotationDetailPage() {
   const params = useParams<{ id: string }>();
   const quotationId = params.id;
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
+  const [artifactsRefreshKey, setArtifactsRefreshKey] =
+  useState(0);
   const [quotation, setQuotation] =
     useState<QuotationRequest | null>(null);
   const [product, setProduct] = useState<Product | null>(null);
@@ -345,9 +347,13 @@ async function saveQuotation(
 <QuotationFilesPanel
   quotationRequestId={quotation.id}
   refreshKey={filesRefreshKey}
+  onArtifactsChanged={() =>
+    setArtifactsRefreshKey((current) => current + 1)
+  }
 />
 <QuotationArtifactsPanel
   quotationRequestId={quotation.id}
+  refreshKey={artifactsRefreshKey}
 />
 {showEditForm && (
   <QuotationForm
