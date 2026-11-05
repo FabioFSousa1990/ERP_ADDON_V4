@@ -29,7 +29,7 @@ import type {
   QuotationStatus,
 } from "@/types/quotation-request";
 import { QuotationArtifactsPanel } from "@/components/quotations/quotation-artifacts-panel";
-
+import { QuotationBomVersionsPanel } from "@/components/quotations/quotation-bom-versions-panel";
 
 const statusLabels: Record<QuotationStatus, string> = {
   received: "Recebido",
@@ -58,6 +58,8 @@ export default function QuotationDetailPage() {
   const quotationId = params.id;
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
   const [artifactsRefreshKey, setArtifactsRefreshKey] =
+  useState(0);
+  const [bomVersionsRefreshKey, setBomVersionsRefreshKey] =
   useState(0);
   const [quotation, setQuotation] =
     useState<QuotationRequest | null>(null);
@@ -350,11 +352,22 @@ async function saveQuotation(
   onArtifactsChanged={() =>
     setArtifactsRefreshKey((current) => current + 1)
   }
+  onBomConfirmed={() =>
+    setBomVersionsRefreshKey((current) => current + 1)
+  }
 />
+
+<QuotationBomVersionsPanel
+  quotationRequestId={quotation.id}
+  refreshKey={bomVersionsRefreshKey}
+/>
+
 <QuotationArtifactsPanel
   quotationRequestId={quotation.id}
   refreshKey={artifactsRefreshKey}
 />
+
+
 {showEditForm && (
   <QuotationForm
     quotation={quotation}

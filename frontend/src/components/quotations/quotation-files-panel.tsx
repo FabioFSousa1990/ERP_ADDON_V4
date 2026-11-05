@@ -41,6 +41,7 @@ type QuotationFilesPanelProps = {
   quotationRequestId: string;
   refreshKey?: number;
   onArtifactsChanged?: () => void;
+  onBomConfirmed?: () => void;
 };
 
 
@@ -83,6 +84,7 @@ export function QuotationFilesPanel({
   quotationRequestId,
   refreshKey = 0,
   onArtifactsChanged,
+  onBomConfirmed,
 }: QuotationFilesPanelProps) {
   const [files, setFiles] = useState<QuotationFile[]>([]);
   const [fileType, setFileType] =
@@ -346,6 +348,7 @@ async function confirmBom() {
   );
 
   setConfirmedBomVersion(version);
+  onBomConfirmed?.();
   onArtifactsChanged?.();
 } catch (requestError) {
   setError(
