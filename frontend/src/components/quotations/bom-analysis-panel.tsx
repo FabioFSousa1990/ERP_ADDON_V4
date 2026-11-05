@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  LoaderCircle,
   PackageCheck,
   X,
 } from "lucide-react";
@@ -12,12 +13,18 @@ import type { BomAnalysisResponse } from "@/types/bom-analysis";
 
 type BomAnalysisPanelProps = {
   analysis: BomAnalysisResponse;
+  confirming: boolean;
+  confirmedVersionNumber: number | null;
+  onConfirm: () => void;
   onClose: () => void;
 };
 
 
 export function BomAnalysisPanel({
   analysis,
+  confirming,
+  confirmedVersionNumber,
+  onConfirm,
   onClose,
 }: BomAnalysisPanelProps) {
   return (
@@ -253,15 +260,60 @@ export function BomAnalysisPanel({
           </div>
         </div>
 
-        <footer className="flex justify-end border-t border-slate-200 px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
-          >
-            Fechar
-          </button>
-        </footer>
+<footer className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-200 px-6 py-4">
+  <div>
+    {confirmedVersionNumber !== null && (
+      <p className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-700">
+        <CheckCircle2 size={17} />
+        BOM confirmada como versão{" "}
+        {confirmedVersionNumber}
+      </p>
+    )}
+
+    {analysis.warning_count > 0 && (
+      <p className="text-sm font-medium text-red-600">
+        Corrige os avisos antes de confirmar a BOM.
+      </p>
+    )}
+  </div>
+
+  <div className="flex items-center gap-3">
+    <button
+      type="button"
+      onClick={onClose}
+      disabled={confirming}
+      className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+    >
+      Fechar
+    </button>
+
+    <button
+      type="button"
+      onClick={onConfirm}
+      disabled={
+        confirming ||
+        confirmedVersionNumber !== null ||
+        analysis.warning_count > 0
+      }
+      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {confirming ? (
+        <LoaderCircle
+          size={17}
+          className="animate-spin"
+        />
+      ) : confirmedVersionNumber !== null ? (
+        <CheckCircle2 size={17} />
+      ) : (
+        <PackageCheck size={17} />
+      )}
+
+      {confirmedVersionNumber !== null
+        ? "BOM confirmada"
+        : "Confirmar BOM"}
+    </button>
+  </div>
+</footer>
       </section>
     </div>
   );

@@ -32,7 +32,9 @@ import type {
 } from "@/types/quotation-artifact";
 import { BomAnalysisPanel } from "@/components/quotations/bom-analysis-panel";
 import type { BomAnalysisResponse } from "@/types/bom-analysis";
-
+import type {
+  QuotationBomVersion,
+} from "@/types/quotation-bom";
 
 type QuotationFilesPanelProps = {
   quotationRequestId: string;
@@ -105,7 +107,10 @@ const [analyzingBomId, setAnalyzingBomId] =
   useState<string | null>(null);
 const [bomAnalysis, setBomAnalysis] =
   useState<BomAnalysisResponse | null>(null);
-
+  const [confirmingBom, setConfirmingBom] =
+  useState(false);
+const [confirmedBomVersion, setConfirmedBomVersion] =
+  useState<QuotationBomVersion | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadFiles = useCallback(async () => {
@@ -293,6 +298,7 @@ async function analyzeBom(
 ) {
   setAnalyzingBomId(quotationFile.id);
   setError(null);
+  setBomAnalysis(null);
 
   try {
     const analysis =
@@ -314,7 +320,34 @@ async function analyzeBom(
     setAnalyzingBomId(null);
   }
 }
+async function confirmBom() {
+  if (!bomAnalysis) {
+    return;
+  }
 
+  setConfirmingBom(true);
+  setError(null);
+
+  try {
+    const version =
+      await apiRequest<QuotationBomVersion>(
+        `/quotation-files/${bomAnalysis.quotation_file_id}/confirm-bom`,
+        {
+          method: "POST",
+        },
+      );
+
+    setConfirmedBomVersion(version);
+  } catch (requestError) {
+    setError(
+      requestError instanceof Error
+        ? requestError.message
+        : "Não foi possível confirmar a BOM.",
+    );
+  } finally {
+    setConfirmingBom(false);
+  }
+}
   async function generatePcbPreviews(
     quotationFile: QuotationFile,
   ) {
@@ -752,7 +785,15 @@ async function analyzeBom(
 {bomAnalysis && (
   <BomAnalysisPanel
     analysis={bomAnalysis}
-    onClose={() => setBomAnalysis(null)}
+    confirming={confirmingBom}
+    confirmedVersionNumber={
+      confirmedBomVersion?.version_number ?? null
+    }
+    onConfirm={() => void confirmBom()}
+    onClose={() => {
+      setBomAnalysis(null);
+      setConfirmedBomVersion(null);
+    }}
   />
 )}
 
