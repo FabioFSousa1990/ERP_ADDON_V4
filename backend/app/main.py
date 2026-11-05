@@ -13,6 +13,9 @@ from backend.app.api.quotation_files import (
 from backend.app.api.quotation_artifacts import (
     router as quotation_artifacts_router,
 )
+from backend.app.api.quotation_boms import (
+    router as quotation_boms_router,
+)
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
@@ -40,7 +43,10 @@ app.include_router(
     quotation_artifacts_router,
     prefix="/api/v1",
 )
-
+app.include_router(
+    quotation_boms_router,
+    prefix="/api/v1",
+)
 
 @app.get("/api/v1/health")
 def health_check() -> dict[str, str]:

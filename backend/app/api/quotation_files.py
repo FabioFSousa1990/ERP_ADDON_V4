@@ -45,7 +45,11 @@ from backend.app.services.gerber_analysis import (
     GerberAnalysisError,
     inspect_gerber_archive,
 )
-
+from backend.app.schemas.bom_analysis import BomAnalysisResponse
+from backend.app.services.bom_analysis import (
+    BomAnalysisError,
+    analyze_bom_file,
+)
 
 router = APIRouter(tags=["quotation files"])
 
@@ -777,6 +781,38 @@ def upload_quotation_file(
             target_path.unlink()
 
         raise
+
+@router.post(
+    "/quotation-files/{file_id}/analyze-bom",
+    response_model=BomAnalysisResponse,
+)
+def analyze_quotation_bom(
+    file_id: uuid.UUID,
+    database: DatabaseSession,
+) -> BomAnalysisResponse:
+    quotation_file = get_file_or_404(file_id, database)
+
+    if quotation_file.file_type != "bom":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "O ficheiro indicado não está classificado "
+                "como BOM."
+            ),
+        )
+
+    file_path = get_storage_path(quotation_file)
+
+    try:
+        return analyze_bom_file(
+            quotation_file,
+            file_path,
+        )
+    except BomAnalysisError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
 
 @router.get(
     "/quotation-files/{file_id}/download",

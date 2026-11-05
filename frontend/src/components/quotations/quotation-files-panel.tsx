@@ -10,12 +10,13 @@ import {
   Download,
   FileText,
   Images,
+  ListChecks,
   LoaderCircle,
+  Pencil,
   Plus,
+  Save,
   Trash2,
   Upload,
-  Pencil,
-  Save,
   X,
 } from "lucide-react";
 
@@ -29,6 +30,9 @@ import type {
 import type {
   QuotationArtifactListResponse,
 } from "@/types/quotation-artifact";
+import { BomAnalysisPanel } from "@/components/quotations/bom-analysis-panel";
+import type { BomAnalysisResponse } from "@/types/bom-analysis";
+
 
 type QuotationFilesPanelProps = {
   quotationRequestId: string;
@@ -97,6 +101,11 @@ const [editFileType, setEditFileType] =
   useState<QuotationFileType>("other");
 const [editRevision, setEditRevision] = useState("");
 const [editNotes, setEditNotes] = useState("");
+const [analyzingBomId, setAnalyzingBomId] =
+  useState<string | null>(null);
+const [bomAnalysis, setBomAnalysis] =
+  useState<BomAnalysisResponse | null>(null);
+
   const [error, setError] = useState<string | null>(null);
 
   const loadFiles = useCallback(async () => {
@@ -279,6 +288,33 @@ async function saveFileMetadata(fileId: string) {
     setSavingId(null);
   }
 }
+async function analyzeBom(
+  quotationFile: QuotationFile,
+) {
+  setAnalyzingBomId(quotationFile.id);
+  setError(null);
+
+  try {
+    const analysis =
+      await apiRequest<BomAnalysisResponse>(
+        `/quotation-files/${quotationFile.id}/analyze-bom`,
+        {
+          method: "POST",
+        },
+      );
+
+    setBomAnalysis(analysis);
+  } catch (requestError) {
+    setError(
+      requestError instanceof Error
+        ? requestError.message
+        : "Não foi possível analisar a BOM.",
+    );
+  } finally {
+    setAnalyzingBomId(null);
+  }
+}
+
   async function generatePcbPreviews(
     quotationFile: QuotationFile,
   ) {
@@ -632,6 +668,26 @@ async function saveFileMetadata(fileId: string) {
     )}
   </button>
 )}
+{quotationFile.file_type === "bom" && (
+  <button
+    type="button"
+    onClick={() => void analyzeBom(quotationFile)}
+    disabled={analyzingBomId === quotationFile.id}
+    title="Analisar BOM"
+    aria-label={`Analisar ${quotationFile.original_name}`}
+    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-300 text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    {analyzingBomId === quotationFile.id ? (
+      <LoaderCircle
+        size={16}
+        className="animate-spin"
+      />
+    ) : (
+      <ListChecks size={16} />
+    )}
+  </button>
+)}
+
         <a
           href={`${API_URL}/quotation-files/${quotationFile.id}/download`}
           title="Descarregar ficheiro"
@@ -693,6 +749,13 @@ async function saveFileMetadata(fileId: string) {
     </div>
   </div>
 )}
+{bomAnalysis && (
+  <BomAnalysisPanel
+    analysis={bomAnalysis}
+    onClose={() => setBomAnalysis(null)}
+  />
+)}
+
     </section>
   );
 }

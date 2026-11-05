@@ -36,3 +36,7 @@ websockets==17.1
 python-multipart==0.0.32
 gerbonara==1.6.3
 pygerber==2.4.3
+et_xmlfile==2.0.0
+openpyxl==3.1.5
+defusedxml==0.7.1
+odfpy==1.4.1

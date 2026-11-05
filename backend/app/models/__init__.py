@@ -4,6 +4,10 @@ from backend.app.models.quotation_file import QuotationFile
 from backend.app.models.quotation_quantity import QuotationQuantity
 from backend.app.models.quotation_request import QuotationRequest
 from backend.app.models.quotation_artifact import QuotationArtifact
+from backend.app.models.quotation_bom import (
+    QuotationBomLine,
+    QuotationBomVersion,
+)
 __all__ = [
     "Customer",
     "Product",
@@ -11,4 +15,6 @@ __all__ = [
     "QuotationQuantity",
     "QuotationFile",
     "QuotationArtifact",
+    "QuotationBomVersion",
+    "QuotationBomLine",
 ]
