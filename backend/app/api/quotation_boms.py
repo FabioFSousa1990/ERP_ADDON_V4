@@ -33,7 +33,12 @@ from backend.app.services.bom_versioning import (
     confirm_bom_version,
     get_bom_version,
 )
-
+from backend.app.schemas.quotation_artifact import (
+    QuotationArtifactRead,
+)
+from backend.app.services.bom_export import (
+    generate_normalized_bom_artifact,
+)
 
 router = APIRouter(tags=["quotation BOMs"])
 
@@ -144,3 +149,28 @@ def get_quotation_bom_version(
         )
 
     return bom_version
+
+@router.post(
+    "/quotation-bom-versions/{bom_version_id}/generate-normalized-excel",
+    response_model=QuotationArtifactRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def generate_normalized_bom_excel(
+    bom_version_id: uuid.UUID,
+    database: DatabaseSession,
+):
+    bom_version = get_bom_version(
+        bom_version_id,
+        database,
+    )
+
+    if bom_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Versão da BOM não encontrada.",
+        )
+
+    return generate_normalized_bom_artifact(
+        bom_version,
+        database,
+    )

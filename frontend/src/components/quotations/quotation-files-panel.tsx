@@ -28,6 +28,7 @@ import type {
   QuotationFileUpdate,
 } from "@/types/quotation-file";
 import type {
+  QuotationArtifact,
   QuotationArtifactListResponse,
 } from "@/types/quotation-artifact";
 import { BomAnalysisPanel } from "@/components/quotations/bom-analysis-panel";
@@ -328,25 +329,36 @@ async function confirmBom() {
   setConfirmingBom(true);
   setError(null);
 
-  try {
-    const version =
-      await apiRequest<QuotationBomVersion>(
-        `/quotation-files/${bomAnalysis.quotation_file_id}/confirm-bom`,
-        {
-          method: "POST",
-        },
-      );
-
-    setConfirmedBomVersion(version);
-  } catch (requestError) {
-    setError(
-      requestError instanceof Error
-        ? requestError.message
-        : "Não foi possível confirmar a BOM.",
+ try {
+  const version =
+    await apiRequest<QuotationBomVersion>(
+      `/quotation-files/${bomAnalysis.quotation_file_id}/confirm-bom`,
+      {
+        method: "POST",
+      },
     );
-  } finally {
-    setConfirmingBom(false);
-  }
+
+  await apiRequest<QuotationArtifact>(
+    `/quotation-bom-versions/${version.id}/generate-normalized-excel`,
+    {
+      method: "POST",
+    },
+  );
+
+  setConfirmedBomVersion(version);
+  onArtifactsChanged?.();
+} catch (requestError) {
+  setError(
+    requestError instanceof Error
+      ? requestError.message
+      : (
+          "Não foi possível confirmar a BOM "
+          + "ou gerar o Excel normalizado."
+        ),
+  );
+} finally {
+  setConfirmingBom(false);
+}
 }
   async function generatePcbPreviews(
     quotationFile: QuotationFile,
