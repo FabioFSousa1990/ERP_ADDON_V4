@@ -45,9 +45,14 @@ from backend.app.services.gerber_analysis import (
     GerberAnalysisError,
     inspect_gerber_archive,
 )
-from backend.app.schemas.bom_analysis import BomAnalysisResponse
+from backend.app.schemas.bom_analysis import (
+    BomAnalysisResponse,
+    BomManualMappingRequest,
+    BomMappingRequiredResponse,
+)
 from backend.app.services.bom_analysis import (
     BomAnalysisError,
+    BomMappingRequiredError,
     analyze_bom_file,
 )
 
@@ -784,12 +789,19 @@ def upload_quotation_file(
 
 @router.post(
     "/quotation-files/{file_id}/analyze-bom",
-    response_model=BomAnalysisResponse,
+    response_model=(
+        BomAnalysisResponse
+        | BomMappingRequiredResponse
+    ),
 )
 def analyze_quotation_bom(
     file_id: uuid.UUID,
     database: DatabaseSession,
-) -> BomAnalysisResponse:
+    payload: BomManualMappingRequest | None = None,
+) -> (
+    BomAnalysisResponse
+    | BomMappingRequiredResponse
+):
     quotation_file = get_file_or_404(file_id, database)
 
     if quotation_file.file_type != "bom":
@@ -807,7 +819,10 @@ def analyze_quotation_bom(
         return analyze_bom_file(
             quotation_file,
             file_path,
+            manual_mapping=payload,
         )
+    except BomMappingRequiredError as error:
+        return error.response
     except BomAnalysisError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

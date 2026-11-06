@@ -10,7 +10,9 @@ from backend.app.models.quotation_bom import (
 )
 from backend.app.models.quotation_file import QuotationFile
 from backend.app.services.bom_analysis import analyze_bom_file
-
+from backend.app.schemas.bom_analysis import (
+    BomManualMappingRequest,
+)
 
 class BomVersioningError(Exception):
     pass
@@ -30,15 +32,16 @@ def get_bom_version(
         )
     )
 
-
 def confirm_bom_version(
     quotation_file: QuotationFile,
     source_path: Path,
     database: Session,
+    manual_mapping: BomManualMappingRequest | None = None,
 ) -> QuotationBomVersion:
     analysis = analyze_bom_file(
         quotation_file,
         source_path,
+        manual_mapping=manual_mapping,
     )
 
     if analysis.warning_count > 0:

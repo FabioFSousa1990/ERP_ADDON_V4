@@ -32,7 +32,13 @@ import type {
   QuotationArtifactListResponse,
 } from "@/types/quotation-artifact";
 import { BomAnalysisPanel } from "@/components/quotations/bom-analysis-panel";
-import type { BomAnalysisResponse } from "@/types/bom-analysis";
+import { BomColumnMappingModal } from "@/components/quotations/bom-column-mapping-modal";
+import type {
+  BomAnalysisResponse,
+  BomAnalysisResult,
+  BomManualMappingRequest,
+  BomMappingRequiredResponse,
+} from "@/types/bom-analysis";
 import type {
   QuotationBomVersion,
 } from "@/types/quotation-bom";
@@ -71,14 +77,12 @@ function formatFileSize(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-
 function formatDate(value: string) {
   return new Date(value).toLocaleString("pt-PT", {
     dateStyle: "short",
     timeStyle: "short",
   });
 }
-
 
 export function QuotationFilesPanel({
   quotationRequestId,
@@ -110,12 +114,19 @@ const [analyzingBomId, setAnalyzingBomId] =
   useState<string | null>(null);
 const [bomAnalysis, setBomAnalysis] =
   useState<BomAnalysisResponse | null>(null);
-  const [confirmingBom, setConfirmingBom] =
+const [bomMappingRequest, setBomMappingRequest] =
+  useState<BomMappingRequiredResponse | null>(null);
+const [submittingBomMapping, setSubmittingBomMapping] =
+  useState(false);
+const [bomMappingError, setBomMappingError] =
+  useState<string | null>(null);
+const [confirmingBom, setConfirmingBom] =
   useState(false);
 const [confirmedBomVersion, setConfirmedBomVersion] =
   useState<QuotationBomVersion | null>(null);
   const [error, setError] = useState<string | null>(null);
-
+const [activeBomMapping, setActiveBomMapping] =
+  useState<BomManualMappingRequest | null>(null);
   const loadFiles = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -262,6 +273,8 @@ function cancelEditing() {
   setError(null);
 }
 
+
+
 async function saveFileMetadata(fileId: string) {
   setSavingId(fileId);
   setError(null);
@@ -302,17 +315,24 @@ async function analyzeBom(
   setAnalyzingBomId(quotationFile.id);
   setError(null);
   setBomAnalysis(null);
+  setBomMappingRequest(null);
+  setBomMappingError(null);
+  setActiveBomMapping(null);
 
   try {
-    const analysis =
-      await apiRequest<BomAnalysisResponse>(
-        `/quotation-files/${quotationFile.id}/analyze-bom`,
-        {
-          method: "POST",
-        },
-      );
+    const result = await apiRequest<BomAnalysisResult>(
+      `/quotation-files/${quotationFile.id}/analyze-bom`,
+      {
+        method: "POST",
+      },
+    );
 
-    setBomAnalysis(analysis);
+    if (result.status === "mapping_required") {
+      setBomMappingRequest(result);
+      return;
+    }
+
+    setBomAnalysis(result);
   } catch (requestError) {
     setError(
       requestError instanceof Error
@@ -323,6 +343,47 @@ async function analyzeBom(
     setAnalyzingBomId(null);
   }
 }
+async function submitBomMapping(
+  payload: BomManualMappingRequest,
+) {
+  if (!bomMappingRequest) {
+    return;
+  }
+
+  setSubmittingBomMapping(true);
+  setBomMappingError(null);
+
+  try {
+    const result = await apiRequest<BomAnalysisResult>(
+      `/quotation-files/${bomMappingRequest.quotation_file_id}/analyze-bom`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+
+    if (result.status === "mapping_required") {
+      setBomMappingRequest(result);
+      setBomMappingError(
+        "Não foi possível analisar a BOM com a associação indicada.",
+      );
+      return;
+    }
+
+  setBomAnalysis(result);
+  setActiveBomMapping(payload);
+  setBomMappingRequest(null);
+  } catch (requestError) {
+    setBomMappingError(
+      requestError instanceof Error
+        ? requestError.message
+        : "Não foi possível analisar a BOM.",
+    );
+  } finally {
+    setSubmittingBomMapping(false);
+  }
+}
+
 async function confirmBom() {
   if (!bomAnalysis) {
     return;
@@ -337,6 +398,9 @@ async function confirmBom() {
       `/quotation-files/${bomAnalysis.quotation_file_id}/confirm-bom`,
       {
         method: "POST",
+        body: activeBomMapping
+          ? JSON.stringify(activeBomMapping)
+          : undefined,
       },
     );
 
@@ -797,6 +861,20 @@ async function confirmBom() {
     </div>
   </div>
 )}
+{bomMappingRequest && (
+  <BomColumnMappingModal
+    mappingRequest={bomMappingRequest}
+    saving={submittingBomMapping}
+    error={bomMappingError}
+    onSubmit={(payload) =>
+      void submitBomMapping(payload)
+    }
+    onClose={() => {
+      setBomMappingRequest(null);
+      setBomMappingError(null);
+    }}
+  />
+)}
 {bomAnalysis && (
   <BomAnalysisPanel
     analysis={bomAnalysis}
@@ -808,6 +886,7 @@ async function confirmBom() {
     onClose={() => {
       setBomAnalysis(null);
       setConfirmedBomVersion(null);
+      setActiveBomMapping(null);
     }}
   />
 )}

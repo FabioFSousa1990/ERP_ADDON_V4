@@ -20,6 +20,9 @@ from backend.app.models.quotation_file import QuotationFile
 from backend.app.schemas.bom_analysis import (
     BomAnalysisLine,
     BomAnalysisResponse,
+    BomColumnOption,
+    BomManualMappingRequest,
+    BomMappingRequiredResponse,
 )
 
 DESIGNATOR_RANGE_PATTERN = re.compile(
@@ -103,8 +106,62 @@ def expand_designators(value: object) -> list[str]:
 
 class BomAnalysisError(Exception):
     pass
+class BomMappingRequiredError(BomAnalysisError):
+    def __init__(
+        self,
+        response: BomMappingRequiredResponse,
+    ) -> None:
+        super().__init__(
+            "É necessário indicar as colunas da BOM."
+        )
+        self.response = response
+def resolve_manual_mapping(
+    workbook,
+    request: BomManualMappingRequest,
+) -> tuple[Any, int, dict[str, int]]:
+    worksheet = next(
+        (
+            worksheet
+            for worksheet in workbook.worksheets
+            if worksheet.title == request.sheet_name
+        ),
+        None,
+    )
 
+    if worksheet is None:
+        raise BomAnalysisError(
+            "A folha selecionada já não existe no ficheiro."
+        )
 
+    if request.header_row > worksheet.max_row:
+        raise BomAnalysisError(
+            "A linha de cabeçalhos selecionada é inválida."
+        )
+
+    columns = request.mapping.model_dump(
+        exclude_none=True
+    )
+
+    selected_columns = list(columns.values())
+
+    if len(selected_columns) != len(set(selected_columns)):
+        raise BomAnalysisError(
+            "A mesma coluna não pode ser associada "
+            "a mais do que um campo."
+        )
+
+    invalid_columns = [
+        column_number
+        for column_number in selected_columns
+        if column_number > worksheet.max_column
+    ]
+
+    if invalid_columns:
+        raise BomAnalysisError(
+            "O mapeamento contém uma coluna inválida."
+        )
+
+    return worksheet, request.header_row, columns
 HEADER_ALIASES = {
     "reference_designator": {
         "referencedesignator",
@@ -114,6 +171,7 @@ HEADER_ALIASES = {
         "refdes",
         "reference",
         "references",
+        "parts",
     },
     "quantity": {
         "quantity",
@@ -462,6 +520,142 @@ def find_bom_table(
         "de designadores e quantidade."
     )
 
+def find_header_candidate(
+    workbook,
+) -> tuple[Any, int]:
+    best_candidate: tuple[int, Any, int] | None = None
+
+    for worksheet in workbook.worksheets:
+        maximum_row = min(worksheet.max_row, 30)
+        maximum_column = min(worksheet.max_column, 200)
+
+        for row_number in range(1, maximum_row + 1):
+            non_empty_headers = 0
+            recognized_headers = 0
+
+            for column_number in range(
+                1,
+                maximum_column + 1,
+            ):
+                value = worksheet.cell(
+                    row=row_number,
+                    column=column_number,
+                ).value
+
+                if value is None or not str(value).strip():
+                    continue
+
+                non_empty_headers += 1
+
+                if identify_header(value) is not None:
+                    recognized_headers += 1
+
+            if non_empty_headers < 2:
+                continue
+
+            score = (
+                recognized_headers * 1000
+                + non_empty_headers * 10
+                - row_number
+            )
+
+            if (
+                best_candidate is None
+                or score > best_candidate[0]
+            ):
+                best_candidate = (
+                    score,
+                    worksheet,
+                    row_number,
+                )
+
+    if best_candidate is None:
+        raise BomAnalysisError(
+            "Não foi possível identificar uma linha "
+            "de cabeçalhos na BOM."
+        )
+
+    return best_candidate[1], best_candidate[2]
+
+def build_mapping_required_response(
+    quotation_file: QuotationFile,
+    workbook,
+) -> BomMappingRequiredResponse:
+    worksheet, header_row = find_header_candidate(
+        workbook
+    )
+
+    columns: list[BomColumnOption] = []
+    maximum_column = min(worksheet.max_column, 200)
+
+    for column_number in range(
+        1,
+        maximum_column + 1,
+    ):
+        raw_header = worksheet.cell(
+            row=header_row,
+            column=column_number,
+        ).value
+
+        header = (
+            str(raw_header).strip()
+            if raw_header is not None
+            else ""
+        )
+
+        sample_values: list[str] = []
+
+        for row_number in range(
+            header_row + 1,
+            min(worksheet.max_row, header_row + 8) + 1,
+        ):
+            value = worksheet.cell(
+                row=row_number,
+                column=column_number,
+            ).value
+
+            if value is None:
+                continue
+
+            text = str(value).strip()
+
+            if (
+                text
+                and text not in sample_values
+            ):
+                sample_values.append(text)
+
+            if len(sample_values) >= 3:
+                break
+
+        if not header and not sample_values:
+            continue
+
+        columns.append(
+            BomColumnOption(
+                column_index=column_number,
+                header=(
+                    header
+                    or f"Coluna {column_number}"
+                ),
+                sample_values=sample_values,
+            )
+        )
+
+    if not columns:
+        raise BomAnalysisError(
+            "Não foram encontradas colunas utilizáveis "
+            "na BOM."
+        )
+
+    return BomMappingRequiredResponse(
+        quotation_file_id=quotation_file.id,
+        original_name=quotation_file.original_name,
+        sheet_name=worksheet.title,
+        header_row=header_row,
+        columns=columns,
+    )
+
 def normalize_optional_text(value: object) -> str | None:
     if value is None:
         return None
@@ -537,6 +731,7 @@ def get_column_value(
 def analyze_bom_file(
     quotation_file: QuotationFile,
     source_path: Path,
+    manual_mapping: BomManualMappingRequest | None = None,
 ) -> BomAnalysisResponse:
     extension = source_path.suffix.lower()
 
@@ -573,12 +768,32 @@ def analyze_bom_file(
             ) from error
 
     try:
-        worksheet, header_row, columns = find_bom_table(
-            workbook
-        )
+        if manual_mapping is not None:
+            worksheet, header_row, columns = (
+                resolve_manual_mapping(
+                    workbook,
+                    manual_mapping,
+                )
+            )
+        else:
+            try:
+                worksheet, header_row, columns = (
+                    find_bom_table(workbook)
+                )
+            except BomAnalysisError as error:
+                mapping_response = (
+                    build_mapping_required_response(
+                        quotation_file,
+                        workbook,
+                    )
+                )
+
+                raise BomMappingRequiredError(
+                    mapping_response
+                ) from error
 
         items: list[BomAnalysisLine] = []
-
+        has_quantity_column = "quantity" in columns
         for row_number in range(
             header_row + 1,
             worksheet.max_row + 1,
@@ -672,15 +887,21 @@ def analyze_bom_file(
                     "Não foi possível interpretar os designadores."
                 )
 
-            if declared_quantity is None:
+            if declared_quantity is None and has_quantity_column:
                 warnings.append(
                     "A quantidade não é um número inteiro válido."
                 )
-            elif declared_quantity <= 0:
+            elif (
+                declared_quantity is not None
+                and declared_quantity <= 0
+            ):
                 warnings.append(
                     "A quantidade tem de ser superior a zero."
                 )
-            elif declared_quantity != len(designators):
+            elif (
+                declared_quantity is not None
+                and declared_quantity != len(designators)
+            ):
                 warnings.append(
                     "A quantidade declarada não coincide com "
                     "o número de designadores."

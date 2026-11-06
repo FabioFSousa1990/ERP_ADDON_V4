@@ -44,7 +44,9 @@ from backend.app.services.bom_comparison import (
     BomComparisonError,
     compare_bom_versions,
 )
-
+from backend.app.schemas.bom_analysis import (
+    BomManualMappingRequest,
+)
 
 router = APIRouter(tags=["quotation BOMs"])
 
@@ -59,6 +61,7 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 def confirm_quotation_bom(
     file_id: uuid.UUID,
     database: DatabaseSession,
+    payload: BomManualMappingRequest | None = None,
 ) -> QuotationBomVersion:
     quotation_file = get_file_or_404(
         file_id,
@@ -81,6 +84,7 @@ def confirm_quotation_bom(
             quotation_file,
             file_path,
             database,
+            manual_mapping=payload,
         )
     except (BomAnalysisError, BomVersioningError) as error:
         raise HTTPException(
