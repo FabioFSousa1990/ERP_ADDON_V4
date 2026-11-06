@@ -43,3 +43,34 @@ export type QuotationBomVersionListResponse = {
   items: QuotationBomVersionSummary[];
   total: number;
 };
+
+export type QuotationBomComponentSnapshot = {
+  designator: string;
+  name: string | null;
+  description: string | null;
+  do_not_place: boolean;
+  footprint: string | null;
+  manufacturer_reference: string | null;
+  datasheet: string | null;
+};
+
+export type QuotationBomComponentChange = {
+  designator: string;
+  changed_fields: string[];
+  previous: QuotationBomComponentSnapshot;
+  current: QuotationBomComponentSnapshot;
+};
+
+export type QuotationBomComparison = {
+  previous_version: QuotationBomVersionSummary;
+  current_version: QuotationBomVersionSummary;
+
+  added: QuotationBomComponentSnapshot[];
+  removed: QuotationBomComponentSnapshot[];
+  changed: QuotationBomComponentChange[];
+
+  added_count: number;
+  removed_count: number;
+  changed_count: number;
+  unchanged_count: number;
+};

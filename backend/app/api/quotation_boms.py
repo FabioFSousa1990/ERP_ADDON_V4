@@ -22,6 +22,7 @@ from backend.app.models.quotation_request import (
     QuotationRequest,
 )
 from backend.app.schemas.quotation_bom import (
+    QuotationBomComparisonResponse,
     QuotationBomVersionListResponse,
     QuotationBomVersionRead,
 )
@@ -39,6 +40,11 @@ from backend.app.schemas.quotation_artifact import (
 from backend.app.services.bom_export import (
     generate_normalized_bom_artifact,
 )
+from backend.app.services.bom_comparison import (
+    BomComparisonError,
+    compare_bom_versions,
+)
+
 
 router = APIRouter(tags=["quotation BOMs"])
 
@@ -174,3 +180,48 @@ def generate_normalized_bom_excel(
         bom_version,
         database,
     )
+
+@router.get(
+    (
+        "/quotation-bom-versions/"
+        "{current_version_id}/compare/"
+        "{previous_version_id}"
+    ),
+    response_model=QuotationBomComparisonResponse,
+)
+def compare_quotation_bom_versions(
+    current_version_id: uuid.UUID,
+    previous_version_id: uuid.UUID,
+    database: DatabaseSession,
+) -> QuotationBomComparisonResponse:
+    current_version = get_bom_version(
+        current_version_id,
+        database,
+    )
+    previous_version = get_bom_version(
+        previous_version_id,
+        database,
+    )
+
+    if current_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Versão atual da BOM não encontrada.",
+        )
+
+    if previous_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Versão anterior da BOM não encontrada.",
+        )
+
+    try:
+        return compare_bom_versions(
+            previous_version,
+            current_version,
+        )
+    except BomComparisonError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error

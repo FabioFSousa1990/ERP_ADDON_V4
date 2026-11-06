@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+    ArrowLeftRight,
     CheckCircle2,
     Eye,
     History,
@@ -12,6 +13,7 @@ import {
 
 import { apiRequest } from "@/lib/api";
 import type {
+    QuotationBomComparison,
     QuotationBomVersion,
     QuotationBomVersionListResponse,
     QuotationBomVersionSummary,
@@ -22,6 +24,7 @@ type QuotationBomVersionsPanelProps = {
     quotationRequestId: string;
     refreshKey?: number;
 };
+import { QuotationBomComparisonModal } from "@/components/quotations/quotation-bom-comparison-modal";
 
 
 function formatDate(value: string) {
@@ -43,7 +46,11 @@ export function QuotationBomVersionsPanel({
     const [error, setError] = useState<string | null>(null);
     const [selectedVersion, setSelectedVersion] =
         useState<QuotationBomVersion | null>(null);
+    const [selectedComparison, setSelectedComparison] =
+    useState<QuotationBomComparison | null>(null);
 
+    const [loadingComparisonId, setLoadingComparisonId] =
+    useState<string | null>(null);
     const [loadingVersionId, setLoadingVersionId] =
         useState<string | null>(null);
     const loadVersions = useCallback(async () => {
@@ -100,6 +107,45 @@ export function QuotationBomVersionsPanel({
             setLoadingVersionId(null);
         }
     }
+    async function openComparison(
+  currentVersion: QuotationBomVersionSummary,
+) {
+  const previousVersion = versions
+    .filter(
+      (version) =>
+        version.version_number
+        < currentVersion.version_number,
+    )
+    .sort(
+      (first, second) =>
+        second.version_number - first.version_number,
+    )[0];
+
+  if (!previousVersion) {
+    return;
+  }
+
+  setLoadingComparisonId(currentVersion.id);
+  setError(null);
+
+  try {
+    const comparison =
+      await apiRequest<QuotationBomComparison>(
+        `/quotation-bom-versions/${currentVersion.id}` +
+          `/compare/${previousVersion.id}`,
+      );
+
+    setSelectedComparison(comparison);
+  } catch (requestError) {
+    setError(
+      requestError instanceof Error
+        ? requestError.message
+        : "Não foi possível comparar as versões da BOM.",
+    );
+  } finally {
+    setLoadingComparisonId(null);
+  }
+}
     return (
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <header className="border-b border-slate-200 p-6">
@@ -177,7 +223,26 @@ export function QuotationBomVersionsPanel({
                                             {version.warning_count} avisos
                                         </span>
                                     )}
+{versions.some(
+  (candidate) =>
+    candidate.version_number < version.version_number,
+) && (
+  <button
+    type="button"
+    onClick={() => void openComparison(version)}
+    disabled={loadingComparisonId === version.id}
+    title={`Comparar versão ${version.version_number} com a anterior`}
+    className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-violet-300 px-3 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+  >
+    {loadingComparisonId === version.id ? (
+      <LoaderCircle size={16} className="animate-spin" />
+    ) : (
+      <ArrowLeftRight size={16} />
+    )}
 
+    Comparar
+  </button>
+)}
                                     <button
                                         type="button"
                                         onClick={() => void openVersion(version)}
@@ -253,6 +318,12 @@ export function QuotationBomVersionsPanel({
                     onClose={() => setSelectedVersion(null)}
                 />
             )}
+            {selectedComparison && (
+  <QuotationBomComparisonModal
+    comparison={selectedComparison}
+    onClose={() => setSelectedComparison(null)}
+  />
+)}
         </section>
     );
 }

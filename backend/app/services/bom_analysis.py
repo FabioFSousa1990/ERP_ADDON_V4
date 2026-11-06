@@ -1,3 +1,5 @@
+import csv
+import io
 import re
 import unicodedata
 from pathlib import Path
@@ -207,6 +209,89 @@ class BomWorkbook:
 
     def close(self) -> None:
         pass
+
+def load_csv_workbook(
+    source_path: Path,
+) -> BomWorkbook:
+    try:
+        raw_content = source_path.read_bytes()
+    except OSError as error:
+        raise BomAnalysisError(
+            f"Não foi possível ler o ficheiro CSV: {error}"
+        ) from error
+
+    text: str | None = None
+
+    for encoding in (
+        "utf-8-sig",
+        "utf-8",
+        "cp1252",
+        "latin-1",
+    ):
+        try:
+            text = raw_content.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+
+    if text is None:
+        raise BomAnalysisError(
+            "Não foi possível identificar a codificação do CSV."
+        )
+
+    sample = text[:8192]
+
+    try:
+        dialect = csv.Sniffer().sniff(
+            sample,
+            delimiters=",;\t|",
+        )
+        delimiter = dialect.delimiter
+    except csv.Error:
+        delimiter_counts = {
+            delimiter: sample.count(delimiter)
+            for delimiter in (",", ";", "\t", "|")
+        }
+        delimiter = max(
+            delimiter_counts,
+            key=delimiter_counts.get,
+        )
+
+        if delimiter_counts[delimiter] == 0:
+            delimiter = ","
+
+    try:
+        reader = csv.reader(
+            io.StringIO(text, newline=""),
+            delimiter=delimiter,
+        )
+
+        rows = [
+            [
+                value.strip() or None
+                for value in row
+            ]
+            for row in reader
+        ]
+    except csv.Error as error:
+        raise BomAnalysisError(
+            f"Não foi possível interpretar o CSV: {error}"
+        ) from error
+
+    if not rows:
+        raise BomAnalysisError(
+            "O ficheiro CSV não contém dados."
+        )
+
+    worksheet = BomWorksheet(
+        title=source_path.stem,
+        rows=rows,
+    )
+
+    workbook = BomWorkbook([worksheet])
+
+
+    return workbook
 
 def parse_repeated_count(
     element,
@@ -459,10 +544,11 @@ def analyze_bom_file(
         ".xlsx",
         ".xlsm",
         ".ods",
+        ".csv",
     }:
         raise BomAnalysisError(
             "A análise de BOM suporta ficheiros "
-            "XLSX, XLSM e ODS."
+            "XLSX, XLSM, ODS e CSV."
         )
 
     if not source_path.is_file():
@@ -472,6 +558,8 @@ def analyze_bom_file(
 
     if extension == ".ods":
         workbook = load_ods_workbook(source_path)
+    elif extension == ".csv":
+        workbook = load_csv_workbook(source_path)
     else:
         try:
             workbook = load_workbook(

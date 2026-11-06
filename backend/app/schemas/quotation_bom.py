@@ -23,7 +23,6 @@ class QuotationBomLineRead(BaseModel):
     warnings: list[str]
     created_at: datetime
 
-
 class QuotationBomVersionSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,13 +42,39 @@ class QuotationBomVersionSummary(BaseModel):
     is_current: bool
     confirmed_at: datetime
 
-
 class QuotationBomVersionRead(
     QuotationBomVersionSummary
 ):
     lines: list[QuotationBomLineRead]
 
-
 class QuotationBomVersionListResponse(BaseModel):
     items: list[QuotationBomVersionSummary]
     total: int
+
+class QuotationBomComponentSnapshot(BaseModel):
+    designator: str
+    name: str | None
+    description: str | None
+    do_not_place: bool
+    footprint: str | None
+    manufacturer_reference: str | None
+    datasheet: str | None
+
+class QuotationBomComponentChange(BaseModel):
+    designator: str
+    changed_fields: list[str]
+    previous: QuotationBomComponentSnapshot
+    current: QuotationBomComponentSnapshot
+
+class QuotationBomComparisonResponse(BaseModel):
+    previous_version: QuotationBomVersionSummary
+    current_version: QuotationBomVersionSummary
+
+    added: list[QuotationBomComponentSnapshot]
+    removed: list[QuotationBomComponentSnapshot]
+    changed: list[QuotationBomComponentChange]
+
+    added_count: int
+    removed_count: int
+    changed_count: int
+    unchanged_count: int

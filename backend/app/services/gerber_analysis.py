@@ -2,7 +2,6 @@ import shutil
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from collections import deque
 from backend.app.core.config import settings
 import warnings
 from PIL import Image, ImageChops, ImageOps
@@ -343,133 +342,38 @@ def create_pygerber_project(
 
     return Project(project_files)
 
-def crop_preview_to_board(image: Image.Image) -> Image.Image:
+def crop_preview_to_board(
+    image: Image.Image,
+) -> Image.Image:
     rgb_image = image.convert("RGB")
-    red, green, blue = rgb_image.split()
 
-    green_over_red = ImageChops.subtract(
-        green,
-        red,
-    ).point(
-        lambda value: 255 if value >= 30 else 0
+    background_color = rgb_image.getpixel((0, 0))
+    background = Image.new(
+        "RGB",
+        rgb_image.size,
+        background_color,
     )
 
-    green_over_blue = ImageChops.subtract(
-        green,
+    difference = ImageChops.difference(
+        rgb_image,
+        background,
+    )
+
+    red, green, blue = difference.split()
+
+    content_mask = ImageChops.lighter(
+        ImageChops.lighter(red, green),
         blue,
     ).point(
-        lambda value: 255 if value >= 30 else 0
+        lambda value: 255 if value >= 8 else 0
     )
 
-    minimum_green = green.point(
-        lambda value: 255 if value >= 60 else 0
-    )
+    content_bounds = content_mask.getbbox()
 
-    green_mask = ImageChops.darker(
-        green_over_red,
-        green_over_blue,
-    )
-    green_mask = ImageChops.darker(
-        green_mask,
-        minimum_green,
-    )
-
-    maximum_analysis_size = 800
-    scale = min(
-        1.0,
-        maximum_analysis_size
-        / max(green_mask.width, green_mask.height),
-    )
-
-    analysis_width = max(
-        1,
-        round(green_mask.width * scale),
-    )
-    analysis_height = max(
-        1,
-        round(green_mask.height * scale),
-    )
-
-    analysis_mask = green_mask.resize(
-        (analysis_width, analysis_height),
-        Image.Resampling.NEAREST,
-    )
-
-    pixels = analysis_mask.load()
-    visited = bytearray(
-        analysis_width * analysis_height
-    )
-
-    largest_component_size = 0
-    largest_bounds: tuple[int, int, int, int] | None = None
-
-    for start_y in range(analysis_height):
-        for start_x in range(analysis_width):
-            position = start_y * analysis_width + start_x
-
-            if visited[position] or pixels[start_x, start_y] == 0:
-                continue
-
-            queue = deque([(start_x, start_y)])
-            visited[position] = 1
-
-            component_size = 0
-            minimum_x = start_x
-            maximum_x = start_x
-            minimum_y = start_y
-            maximum_y = start_y
-
-            while queue:
-                current_x, current_y = queue.popleft()
-                component_size += 1
-
-                minimum_x = min(minimum_x, current_x)
-                maximum_x = max(maximum_x, current_x)
-                minimum_y = min(minimum_y, current_y)
-                maximum_y = max(maximum_y, current_y)
-
-                for neighbour_y in range(
-                    max(0, current_y - 1),
-                    min(analysis_height, current_y + 2),
-                ):
-                    for neighbour_x in range(
-                        max(0, current_x - 1),
-                        min(analysis_width, current_x + 2),
-                    ):
-                        neighbour_position = (
-                            neighbour_y * analysis_width
-                            + neighbour_x
-                        )
-
-                        if visited[neighbour_position]:
-                            continue
-
-                        if pixels[neighbour_x, neighbour_y] == 0:
-                            continue
-
-                        visited[neighbour_position] = 1
-                        queue.append(
-                            (neighbour_x, neighbour_y)
-                        )
-
-            if component_size > largest_component_size:
-                largest_component_size = component_size
-                largest_bounds = (
-                    minimum_x,
-                    minimum_y,
-                    maximum_x + 1,
-                    maximum_y + 1,
-                )
-
-    if largest_bounds is None:
+    if content_bounds is None:
         return image.copy()
 
-    inverse_scale = 1 / scale
-
-    left = round(largest_bounds[0] * inverse_scale)
-    top = round(largest_bounds[1] * inverse_scale)
-    right = round(largest_bounds[2] * inverse_scale)
-    bottom = round(largest_bounds[3] * inverse_scale)
+    left, top, right, bottom = content_bounds
 
     margin = max(
         20,
@@ -478,7 +382,7 @@ def crop_preview_to_board(image: Image.Image) -> Image.Image:
                 right - left,
                 bottom - top,
             )
-            * 0.05
+            * 0.02
         ),
     )
 
