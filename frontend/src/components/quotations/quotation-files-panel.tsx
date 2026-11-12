@@ -12,6 +12,7 @@ import {
   Images,
   ListChecks,
   LoaderCircle,
+  MapPin,
   Pencil,
   Plus,
   Save,
@@ -41,8 +42,15 @@ import type {
 } from "@/types/bom-analysis";
 import type {
   QuotationBomVersion,
+  QuotationBomVersionListResponse,
 } from "@/types/quotation-bom";
-
+import { PickPlaceAnalysisModal } from "@/components/quotations/pick-place-analysis-modal";
+import type {
+  PickPlaceAnalysisResponse,
+} from "@/types/pick-place-analysis";
+import type {
+  PickPlaceComparisonResponse,
+} from "@/types/pick-place-comparison";
 type QuotationFilesPanelProps = {
   quotationRequestId: string;
   refreshKey?: number;
@@ -104,29 +112,47 @@ export function QuotationFilesPanel({
     useState<string | null>(null);
   const [generatingPreviewId, setGeneratingPreviewId] =
     useState<string | null>(null);
-const [editingId, setEditingId] = useState<string | null>(null);
-const [savingId, setSavingId] = useState<string | null>(null);
-const [editFileType, setEditFileType] =
-  useState<QuotationFileType>("other");
-const [editRevision, setEditRevision] = useState("");
-const [editNotes, setEditNotes] = useState("");
-const [analyzingBomId, setAnalyzingBomId] =
-  useState<string | null>(null);
-const [bomAnalysis, setBomAnalysis] =
-  useState<BomAnalysisResponse | null>(null);
-const [bomMappingRequest, setBomMappingRequest] =
-  useState<BomMappingRequiredResponse | null>(null);
-const [submittingBomMapping, setSubmittingBomMapping] =
-  useState(false);
-const [bomMappingError, setBomMappingError] =
-  useState<string | null>(null);
-const [confirmingBom, setConfirmingBom] =
-  useState(false);
-const [confirmedBomVersion, setConfirmedBomVersion] =
-  useState<QuotationBomVersion | null>(null);
+  const [analyzingPickPlaceId, setAnalyzingPickPlaceId] =
+    useState<string | null>(null);
+
+  const [pickPlaceAnalysis, setPickPlaceAnalysis] =
+    useState<PickPlaceAnalysisResponse | null>(null);
+
+  const [pickPlaceComparison, setPickPlaceComparison] =
+    useState<PickPlaceComparisonResponse | null>(null);
+
+  const [
+    pickPlaceComparisonLoading,
+    setPickPlaceComparisonLoading,
+  ] = useState(false);
+
+  const [
+    pickPlaceComparisonError,
+    setPickPlaceComparisonError,
+  ] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [editFileType, setEditFileType] =
+    useState<QuotationFileType>("other");
+  const [editRevision, setEditRevision] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [analyzingBomId, setAnalyzingBomId] =
+    useState<string | null>(null);
+  const [bomAnalysis, setBomAnalysis] =
+    useState<BomAnalysisResponse | null>(null);
+  const [bomMappingRequest, setBomMappingRequest] =
+    useState<BomMappingRequiredResponse | null>(null);
+  const [submittingBomMapping, setSubmittingBomMapping] =
+    useState(false);
+  const [bomMappingError, setBomMappingError] =
+    useState<string | null>(null);
+  const [confirmingBom, setConfirmingBom] =
+    useState(false);
+  const [confirmedBomVersion, setConfirmedBomVersion] =
+    useState<QuotationBomVersion | null>(null);
   const [error, setError] = useState<string | null>(null);
-const [activeBomMapping, setActiveBomMapping] =
-  useState<BomManualMappingRequest | null>(null);
+  const [activeBomMapping, setActiveBomMapping] =
+    useState<BomManualMappingRequest | null>(null);
   const loadFiles = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -254,179 +280,246 @@ const [activeBomMapping, setActiveBomMapping] =
     }
   }
 
-function startEditing(quotationFile: QuotationFile) {
-  setEditingId(quotationFile.id);
-  setEditFileType(quotationFile.file_type);
-  setEditRevision(quotationFile.revision ?? "");
-  setEditNotes(quotationFile.notes ?? "");
-  setError(null);
-}
-
-function cancelEditing() {
-  if (savingId) {
-    return;
+  function startEditing(quotationFile: QuotationFile) {
+    setEditingId(quotationFile.id);
+    setEditFileType(quotationFile.file_type);
+    setEditRevision(quotationFile.revision ?? "");
+    setEditNotes(quotationFile.notes ?? "");
+    setError(null);
   }
 
-  setEditingId(null);
-  setEditRevision("");
-  setEditNotes("");
-  setError(null);
-}
-
-
-
-async function saveFileMetadata(fileId: string) {
-  setSavingId(fileId);
-  setError(null);
-
-  const payload: QuotationFileUpdate = {
-    file_type: editFileType,
-    revision: editRevision.trim() || null,
-    notes: editNotes.trim() || null,
-  };
-
-  try {
-    await apiRequest<QuotationFile>(
-      `/quotation-files/${fileId}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      },
-    );
+  function cancelEditing() {
+    if (savingId) {
+      return;
+    }
 
     setEditingId(null);
     setEditRevision("");
     setEditNotes("");
-
-    await loadFiles();
-  } catch (requestError) {
-    setError(
-      requestError instanceof Error
-        ? requestError.message
-        : "Não foi possível editar o ficheiro.",
-    );
-  } finally {
-    setSavingId(null);
-  }
-}
-async function analyzeBom(
-  quotationFile: QuotationFile,
-) {
-  setAnalyzingBomId(quotationFile.id);
-  setError(null);
-  setBomAnalysis(null);
-  setBomMappingRequest(null);
-  setBomMappingError(null);
-  setActiveBomMapping(null);
-
-  try {
-    const result = await apiRequest<BomAnalysisResult>(
-      `/quotation-files/${quotationFile.id}/analyze-bom`,
-      {
-        method: "POST",
-      },
-    );
-
-    if (result.status === "mapping_required") {
-      setBomMappingRequest(result);
-      return;
-    }
-
-    setBomAnalysis(result);
-  } catch (requestError) {
-    setError(
-      requestError instanceof Error
-        ? requestError.message
-        : "Não foi possível analisar a BOM.",
-    );
-  } finally {
-    setAnalyzingBomId(null);
-  }
-}
-async function submitBomMapping(
-  payload: BomManualMappingRequest,
-) {
-  if (!bomMappingRequest) {
-    return;
+    setError(null);
   }
 
-  setSubmittingBomMapping(true);
-  setBomMappingError(null);
 
-  try {
-    const result = await apiRequest<BomAnalysisResult>(
-      `/quotation-files/${bomMappingRequest.quotation_file_id}/analyze-bom`,
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-      },
-    );
 
-    if (result.status === "mapping_required") {
-      setBomMappingRequest(result);
-      setBomMappingError(
-        "Não foi possível analisar a BOM com a associação indicada.",
+  async function saveFileMetadata(fileId: string) {
+    setSavingId(fileId);
+    setError(null);
+
+    const payload: QuotationFileUpdate = {
+      file_type: editFileType,
+      revision: editRevision.trim() || null,
+      notes: editNotes.trim() || null,
+    };
+
+    try {
+      await apiRequest<QuotationFile>(
+        `/quotation-files/${fileId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        },
       );
+
+      setEditingId(null);
+      setEditRevision("");
+      setEditNotes("");
+
+      await loadFiles();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Não foi possível editar o ficheiro.",
+      );
+    } finally {
+      setSavingId(null);
+    }
+  }
+  async function analyzeBom(
+    quotationFile: QuotationFile,
+  ) {
+    setAnalyzingBomId(quotationFile.id);
+    setError(null);
+    setBomAnalysis(null);
+    setBomMappingRequest(null);
+    setBomMappingError(null);
+    setActiveBomMapping(null);
+
+    try {
+      const result = await apiRequest<BomAnalysisResult>(
+        `/quotation-files/${quotationFile.id}/analyze-bom`,
+        {
+          method: "POST",
+        },
+      );
+
+      if (result.status === "mapping_required") {
+        setBomMappingRequest(result);
+        return;
+      }
+
+      setBomAnalysis(result);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Não foi possível analisar a BOM.",
+      );
+    } finally {
+      setAnalyzingBomId(null);
+    }
+  }
+  async function submitBomMapping(
+    payload: BomManualMappingRequest,
+  ) {
+    if (!bomMappingRequest) {
       return;
     }
 
-  setBomAnalysis(result);
-  setActiveBomMapping(payload);
-  setBomMappingRequest(null);
-  } catch (requestError) {
-    setBomMappingError(
-      requestError instanceof Error
-        ? requestError.message
-        : "Não foi possível analisar a BOM.",
-    );
-  } finally {
-    setSubmittingBomMapping(false);
+    setSubmittingBomMapping(true);
+    setBomMappingError(null);
+
+    try {
+      const result = await apiRequest<BomAnalysisResult>(
+        `/quotation-files/${bomMappingRequest.quotation_file_id}/analyze-bom`,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        },
+      );
+
+      if (result.status === "mapping_required") {
+        setBomMappingRequest(result);
+        setBomMappingError(
+          "Não foi possível analisar a BOM com a associação indicada.",
+        );
+        return;
+      }
+
+      setBomAnalysis(result);
+      setActiveBomMapping(payload);
+      setBomMappingRequest(null);
+    } catch (requestError) {
+      setBomMappingError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Não foi possível analisar a BOM.",
+      );
+    } finally {
+      setSubmittingBomMapping(false);
+    }
   }
-}
 
-async function confirmBom() {
-  if (!bomAnalysis) {
-    return;
+  async function confirmBom() {
+    if (!bomAnalysis) {
+      return;
+    }
+
+    setConfirmingBom(true);
+    setError(null);
+
+    try {
+      const version =
+        await apiRequest<QuotationBomVersion>(
+          `/quotation-files/${bomAnalysis.quotation_file_id}/confirm-bom`,
+          {
+            method: "POST",
+            body: activeBomMapping
+              ? JSON.stringify(activeBomMapping)
+              : undefined,
+          },
+        );
+
+      await apiRequest<QuotationArtifact>(
+        `/quotation-bom-versions/${version.id}/generate-normalized-excel`,
+        {
+          method: "POST",
+        },
+      );
+
+      setConfirmedBomVersion(version);
+      onBomConfirmed?.();
+      onArtifactsChanged?.();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : (
+            "Não foi possível confirmar a BOM "
+            + "ou gerar o Excel normalizado."
+          ),
+      );
+    } finally {
+      setConfirmingBom(false);
+    }
+  }
+  async function analyzePickPlace(
+    quotationFile: QuotationFile,
+  ) {
+    setAnalyzingPickPlaceId(quotationFile.id);
+    setError(null);
+    setPickPlaceAnalysis(null);
+    setPickPlaceComparison(null);
+    setPickPlaceComparisonError(null);
+
+    try {
+      const analysis =
+        await apiRequest<PickPlaceAnalysisResponse>(
+          `/quotation-files/${quotationFile.id}/analyze-pick-place`,
+          {
+            method: "POST",
+          },
+        );
+
+      setPickPlaceAnalysis(analysis);
+      setPickPlaceComparisonLoading(true);
+
+      try {
+        const versions =
+          await apiRequest<QuotationBomVersionListResponse>(
+            `/quotation-requests/${quotationRequestId}/bom-versions`,
+          );
+
+        const currentVersion = versions.items.find(
+          (version) => version.is_current,
+        );
+
+        if (!currentVersion) {
+          return;
+        }
+
+        const comparison =
+          await apiRequest<PickPlaceComparisonResponse>(
+            (
+              `/quotation-bom-versions/${currentVersion.id}` +
+              `/compare-pick-place/${quotationFile.id}`
+            ),
+          );
+
+        setPickPlaceComparison(comparison);
+      } catch (comparisonRequestError) {
+        setPickPlaceComparisonError(
+          comparisonRequestError instanceof Error
+            ? comparisonRequestError.message
+            : (
+              "Não foi possível comparar o Pick&Place "
+              + "com a BOM atual."
+            ),
+        );
+      } finally {
+        setPickPlaceComparisonLoading(false);
+      }
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Não foi possível analisar o Pick&Place.",
+      );
+    } finally {
+      setAnalyzingPickPlaceId(null);
+    }
   }
 
-  setConfirmingBom(true);
-  setError(null);
-
- try {
-  const version =
-    await apiRequest<QuotationBomVersion>(
-      `/quotation-files/${bomAnalysis.quotation_file_id}/confirm-bom`,
-      {
-        method: "POST",
-        body: activeBomMapping
-          ? JSON.stringify(activeBomMapping)
-          : undefined,
-      },
-    );
-
-  await apiRequest<QuotationArtifact>(
-    `/quotation-bom-versions/${version.id}/generate-normalized-excel`,
-    {
-      method: "POST",
-    },
-  );
-
-  setConfirmedBomVersion(version);
-  onBomConfirmed?.();
-  onArtifactsChanged?.();
-} catch (requestError) {
-  setError(
-    requestError instanceof Error
-      ? requestError.message
-      : (
-          "Não foi possível confirmar a BOM "
-          + "ou gerar o Excel normalizado."
-        ),
-  );
-} finally {
-  setConfirmingBom(false);
-}
-}
   async function generatePcbPreviews(
     quotationFile: QuotationFile,
   ) {
@@ -609,234 +702,258 @@ async function confirmBom() {
       ) : (
         <div className="divide-y divide-slate-100">
 
-{files.map((quotationFile) =>
-  editingId === quotationFile.id ? (
-    <div
-      key={quotationFile.id}
-      className="space-y-4 bg-slate-50 px-6 py-5"
-    >
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-slate-900">
-            {quotationFile.original_name}
-          </p>
+          {files.map((quotationFile) =>
+            editingId === quotationFile.id ? (
+              <div
+                key={quotationFile.id}
+                className="space-y-4 bg-slate-50 px-6 py-5"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-slate-900">
+                      {quotationFile.original_name}
+                    </p>
 
-          <p className="mt-1 text-xs text-slate-500">
-            O ficheiro físico não será alterado.
-          </p>
-        </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      O ficheiro físico não será alterado.
+                    </p>
+                  </div>
 
-        <button
-          type="button"
-          onClick={cancelEditing}
-          disabled={savingId === quotationFile.id}
-          title="Cancelar edição"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:bg-white disabled:opacity-50"
-        >
-          <X size={16} />
-        </button>
-      </div>
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    disabled={savingId === quotationFile.id}
+                    title="Cancelar edição"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:bg-white disabled:opacity-50"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">
-            Tipo
-          </span>
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Tipo
+                    </span>
 
-          <select
-            value={editFileType}
-            onChange={(event) =>
-              setEditFileType(
-                event.target.value as QuotationFileType,
-              )
-            }
-            className={inputClass}
-          >
-            {Object.entries(fileTypeLabels).map(
-              ([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ),
-            )}
-          </select>
-        </label>
+                    <select
+                      value={editFileType}
+                      onChange={(event) =>
+                        setEditFileType(
+                          event.target.value as QuotationFileType,
+                        )
+                      }
+                      className={inputClass}
+                    >
+                      {Object.entries(fileTypeLabels).map(
+                        ([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
 
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">
-            Revisão
-          </span>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Revisão
+                    </span>
 
-          <input
-            value={editRevision}
-            onChange={(event) =>
-              setEditRevision(event.target.value)
-            }
-            className={inputClass}
-            placeholder="Opcional"
-          />
-        </label>
+                    <input
+                      value={editRevision}
+                      onChange={(event) =>
+                        setEditRevision(event.target.value)
+                      }
+                      className={inputClass}
+                      placeholder="Opcional"
+                    />
+                  </label>
 
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">
-            Observações
-          </span>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Observações
+                    </span>
 
-          <input
-            value={editNotes}
-            onChange={(event) =>
-              setEditNotes(event.target.value)
-            }
-            className={inputClass}
-            placeholder="Opcional"
-          />
-        </label>
-      </div>
+                    <input
+                      value={editNotes}
+                      onChange={(event) =>
+                        setEditNotes(event.target.value)
+                      }
+                      className={inputClass}
+                      placeholder="Opcional"
+                    />
+                  </label>
+                </div>
 
-      <div className="flex justify-end gap-3">
-        <button
-          type="button"
-          onClick={cancelEditing}
-          disabled={savingId === quotationFile.id}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-white disabled:opacity-50"
-        >
-          Cancelar
-        </button>
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    disabled={savingId === quotationFile.id}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-white disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
 
-        <button
-          type="button"
-          onClick={() =>
-            void saveFileMetadata(quotationFile.id)
-          }
-          disabled={savingId === quotationFile.id}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
-        >
-          {savingId === quotationFile.id ? (
-            <LoaderCircle
-              size={16}
-              className="animate-spin"
-            />
-          ) : (
-            <Save size={16} />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void saveFileMetadata(quotationFile.id)
+                    }
+                    disabled={savingId === quotationFile.id}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {savingId === quotationFile.id ? (
+                      <LoaderCircle
+                        size={16}
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <Save size={16} />
+                    )}
+
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                key={quotationFile.id}
+                className="flex flex-wrap items-center justify-between gap-4 px-6 py-4"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                    <FileText size={19} />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-slate-900">
+                      {quotationFile.original_name}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      {fileTypeLabels[quotationFile.file_type]}
+                      {quotationFile.revision
+                        ? ` · Rev. ${quotationFile.revision}`
+                        : ""}
+                      {` · ${formatFileSize(quotationFile.size_bytes)}`}
+                      {` · ${formatDate(quotationFile.uploaded_at)}`}
+                    </p>
+
+                    {quotationFile.notes && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {quotationFile.notes}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {quotationFile.file_type === "gerbers" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void generatePcbPreviews(quotationFile)
+                      }
+                      disabled={
+                        generatingPreviewId === quotationFile.id
+                      }
+                      title="Gerar vistas da PCB"
+                      aria-label={`Gerar vistas de ${quotationFile.original_name}`}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-300 text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {generatingPreviewId === quotationFile.id ? (
+                        <LoaderCircle
+                          size={16}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <Images size={16} />
+                      )}
+                    </button>
+                  )}
+                  {quotationFile.file_type === "bom" && (
+                    <button
+                      type="button"
+                      onClick={() => void analyzeBom(quotationFile)}
+                      disabled={analyzingBomId === quotationFile.id}
+                      title="Analisar BOM"
+                      aria-label={`Analisar ${quotationFile.original_name}`}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-300 text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {analyzingBomId === quotationFile.id ? (
+                        <LoaderCircle
+                          size={16}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <ListChecks size={16} />
+                      )}
+                    </button>
+                  )}
+                  {quotationFile.file_type === "pick_place" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void analyzePickPlace(quotationFile)
+                      }
+                      disabled={
+                        analyzingPickPlaceId === quotationFile.id
+                      }
+                      title="Analisar Pick&Place"
+                      aria-label={
+                        `Analisar ${quotationFile.original_name}`
+                      }
+                      className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-cyan-300 text-cyan-700 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {analyzingPickPlaceId === quotationFile.id ? (
+                        <LoaderCircle
+                          size={16}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <MapPin size={16} />
+                      )}
+                    </button>
+                  )}
+                  <a
+                    href={`${API_URL}/quotation-files/${quotationFile.id}/download`}
+                    title="Descarregar ficheiro"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    <Download size={16} />
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => startEditing(quotationFile)}
+                    title="Editar informação"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    <Pencil size={16} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void deleteFile(quotationFile)}
+                    disabled={deletingId === quotationFile.id}
+                    title="Remover ficheiro"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                  >
+                    {deletingId === quotationFile.id ? (
+                      <LoaderCircle
+                        size={16}
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <Trash2 size={16} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            ),
           )}
-
-          Guardar
-        </button>
-      </div>
-    </div>
-  ) : (
-    <div
-      key={quotationFile.id}
-      className="flex flex-wrap items-center justify-between gap-4 px-6 py-4"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-          <FileText size={19} />
-        </div>
-
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-slate-900">
-            {quotationFile.original_name}
-          </p>
-
-          <p className="mt-1 text-xs text-slate-500">
-            {fileTypeLabels[quotationFile.file_type]}
-            {quotationFile.revision
-              ? ` · Rev. ${quotationFile.revision}`
-              : ""}
-            {` · ${formatFileSize(quotationFile.size_bytes)}`}
-            {` · ${formatDate(quotationFile.uploaded_at)}`}
-          </p>
-
-          {quotationFile.notes && (
-            <p className="mt-1 text-xs text-slate-500">
-              {quotationFile.notes}
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        {quotationFile.file_type === "gerbers" && (
-  <button
-    type="button"
-    onClick={() =>
-      void generatePcbPreviews(quotationFile)
-    }
-    disabled={
-      generatingPreviewId === quotationFile.id
-    }
-    title="Gerar vistas da PCB"
-    aria-label={`Gerar vistas de ${quotationFile.original_name}`}
-    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-300 text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
-  >
-    {generatingPreviewId === quotationFile.id ? (
-      <LoaderCircle
-        size={16}
-        className="animate-spin"
-      />
-    ) : (
-      <Images size={16} />
-    )}
-  </button>
-)}
-{quotationFile.file_type === "bom" && (
-  <button
-    type="button"
-    onClick={() => void analyzeBom(quotationFile)}
-    disabled={analyzingBomId === quotationFile.id}
-    title="Analisar BOM"
-    aria-label={`Analisar ${quotationFile.original_name}`}
-    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-300 text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
-  >
-    {analyzingBomId === quotationFile.id ? (
-      <LoaderCircle
-        size={16}
-        className="animate-spin"
-      />
-    ) : (
-      <ListChecks size={16} />
-    )}
-  </button>
-)}
-
-        <a
-          href={`${API_URL}/quotation-files/${quotationFile.id}/download`}
-          title="Descarregar ficheiro"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-        >
-          <Download size={16} />
-        </a>
-
-        <button
-          type="button"
-          onClick={() => startEditing(quotationFile)}
-          title="Editar informação"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-        >
-          <Pencil size={16} />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => void deleteFile(quotationFile)}
-          disabled={deletingId === quotationFile.id}
-          title="Remover ficheiro"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
-        >
-          {deletingId === quotationFile.id ? (
-            <LoaderCircle
-              size={16}
-              className="animate-spin"
-            />
-          ) : (
-            <Trash2 size={16} />
-          )}
-        </button>
-      </div>
-    </div>
-  ),
-)}
 
 
 
@@ -844,52 +961,71 @@ async function confirmBom() {
         </div>
       )}
       {generatingPreviewId && (
-  <div className="fixed bottom-6 right-6 z-50 flex max-w-md items-start gap-3 rounded-xl border border-emerald-200 bg-white p-4 shadow-2xl">
-    <LoaderCircle
-      size={20}
-      className="mt-0.5 shrink-0 animate-spin text-emerald-600"
-    />
+        <div className="fixed bottom-6 right-6 z-50 flex max-w-md items-start gap-3 rounded-xl border border-emerald-200 bg-white p-4 shadow-2xl">
+          <LoaderCircle
+            size={20}
+            className="mt-0.5 shrink-0 animate-spin text-emerald-600"
+          />
 
-    <div>
-      <p className="font-semibold text-slate-950">
-        A gerar imagens da PCB
-      </p>
+          <div>
+            <p className="font-semibold text-slate-950">
+              A gerar imagens da PCB
+            </p>
 
-      <p className="mt-1 text-sm text-slate-600">
-        A analisar os Gerbers. Este processo pode demorar alguns segundos.
-      </p>
-    </div>
-  </div>
-)}
-{bomMappingRequest && (
-  <BomColumnMappingModal
-    mappingRequest={bomMappingRequest}
-    saving={submittingBomMapping}
-    error={bomMappingError}
-    onSubmit={(payload) =>
-      void submitBomMapping(payload)
-    }
-    onClose={() => {
-      setBomMappingRequest(null);
-      setBomMappingError(null);
-    }}
-  />
-)}
-{bomAnalysis && (
-  <BomAnalysisPanel
-    analysis={bomAnalysis}
-    confirming={confirmingBom}
-    confirmedVersionNumber={
-      confirmedBomVersion?.version_number ?? null
-    }
-    onConfirm={() => void confirmBom()}
-    onClose={() => {
-      setBomAnalysis(null);
-      setConfirmedBomVersion(null);
-      setActiveBomMapping(null);
-    }}
-  />
-)}
+            <p className="mt-1 text-sm text-slate-600">
+              A analisar os Gerbers. Este processo pode demorar alguns segundos.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {pickPlaceAnalysis && (
+        <PickPlaceAnalysisModal
+          analysis={pickPlaceAnalysis}
+          comparison={pickPlaceComparison}
+          comparisonLoading={
+            pickPlaceComparisonLoading
+          }
+          comparisonError={
+            pickPlaceComparisonError
+          }
+          onClose={() => {
+            setPickPlaceAnalysis(null);
+            setPickPlaceComparison(null);
+            setPickPlaceComparisonError(null);
+          }}
+        />
+      )}
+
+      {bomMappingRequest && (
+        <BomColumnMappingModal
+          mappingRequest={bomMappingRequest}
+          saving={submittingBomMapping}
+          error={bomMappingError}
+          onSubmit={(payload) =>
+            void submitBomMapping(payload)
+          }
+          onClose={() => {
+            setBomMappingRequest(null);
+            setBomMappingError(null);
+          }}
+        />
+      )}
+      {bomAnalysis && (
+        <BomAnalysisPanel
+          analysis={bomAnalysis}
+          confirming={confirmingBom}
+          confirmedVersionNumber={
+            confirmedBomVersion?.version_number ?? null
+          }
+          onConfirm={() => void confirmBom()}
+          onClose={() => {
+            setBomAnalysis(null);
+            setConfirmedBomVersion(null);
+            setActiveBomMapping(null);
+          }}
+        />
+      )}
 
     </section>
   );

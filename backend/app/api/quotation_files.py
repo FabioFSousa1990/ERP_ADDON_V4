@@ -56,6 +56,14 @@ from backend.app.services.bom_analysis import (
     analyze_bom_file,
 )
 
+from backend.app.schemas.pick_place_analysis import (
+    PickPlaceAnalysisResponse,
+)
+from backend.app.services.pick_place_analysis import (
+    PickPlaceAnalysisError,
+    analyze_pick_place_file,
+)
+
 router = APIRouter(tags=["quotation files"])
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -824,6 +832,43 @@ def analyze_quotation_bom(
     except BomMappingRequiredError as error:
         return error.response
     except BomAnalysisError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+
+@router.post(
+    "/quotation-files/{file_id}/analyze-pick-place",
+    response_model=PickPlaceAnalysisResponse,
+)
+def analyze_quotation_pick_place(
+    file_id: uuid.UUID,
+    database: DatabaseSession,
+) -> PickPlaceAnalysisResponse:
+    quotation_file = get_file_or_404(
+        file_id,
+        database,
+    )
+
+    if quotation_file.file_type != "pick_place":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "O ficheiro indicado não está classificado "
+                "como Pick&Place."
+            ),
+        )
+
+    file_path = get_storage_path(
+        quotation_file,
+    )
+
+    try:
+        return analyze_pick_place_file(
+            quotation_file,
+            file_path,
+        )
+    except PickPlaceAnalysisError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(error),

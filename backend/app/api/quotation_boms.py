@@ -47,7 +47,17 @@ from backend.app.services.bom_comparison import (
 from backend.app.schemas.bom_analysis import (
     BomManualMappingRequest,
 )
-
+from backend.app.schemas.pick_place_comparison import (
+    PickPlaceComparisonResponse,
+)
+from backend.app.services.pick_place_analysis import (
+    PickPlaceAnalysisError,
+    analyze_pick_place_file,
+)
+from backend.app.services.pick_place_comparison import (
+    PickPlaceComparisonError,
+    compare_bom_with_pick_place,
+)
 router = APIRouter(tags=["quotation BOMs"])
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -225,6 +235,67 @@ def compare_quotation_bom_versions(
             current_version,
         )
     except BomComparisonError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+
+@router.get(
+    (
+        "/quotation-bom-versions/{bom_version_id}"
+        "/compare-pick-place/{pick_place_file_id}"
+    ),
+    response_model=PickPlaceComparisonResponse,
+)
+def compare_bom_to_pick_place(
+    bom_version_id: uuid.UUID,
+    pick_place_file_id: uuid.UUID,
+    database: DatabaseSession,
+) -> PickPlaceComparisonResponse:
+    bom_version = get_bom_version(
+        bom_version_id,
+        database,
+    )
+
+    if bom_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Versão da BOM não encontrada.",
+        )
+
+    pick_place_file = get_file_or_404(
+        pick_place_file_id,
+        database,
+    )
+
+    if pick_place_file.file_type != "pick_place":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "O ficheiro indicado não está classificado "
+                "como Pick&Place."
+            ),
+        )
+
+    file_path = get_storage_path(
+        pick_place_file,
+    )
+
+    try:
+        pick_place_analysis = analyze_pick_place_file(
+            pick_place_file,
+            file_path,
+        )
+
+        return compare_bom_with_pick_place(
+            bom_version,
+            pick_place_file,
+            pick_place_analysis,
+        )
+    except (
+        PickPlaceAnalysisError,
+        PickPlaceComparisonError,
+    ) as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(error),
