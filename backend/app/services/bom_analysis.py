@@ -794,6 +794,8 @@ def analyze_bom_file(
 
         items: list[BomAnalysisLine] = []
         has_quantity_column = "quantity" in columns
+        consecutive_empty_rows = 0
+
         for row_number in range(
             header_row + 1,
             worksheet.max_row + 1,
@@ -847,7 +849,7 @@ def analyze_bom_file(
                 "datasheet",
             )
 
-            if all(
+            row_is_empty = all(
                 value is None or str(value).strip() == ""
                 for value in {
                     reference_value,
@@ -859,8 +861,17 @@ def analyze_bom_file(
                     manufacturer_reference_value,
                     datasheet_value,
                 }
-            ):
+            )
+
+            if row_is_empty:
+                consecutive_empty_rows += 1
+
+                if items and consecutive_empty_rows >= 2:
+                    break
+
                 continue
+
+            consecutive_empty_rows = 0
 
             reference_designator = normalize_optional_text(
                 reference_value
