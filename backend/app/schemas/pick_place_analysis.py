@@ -67,3 +67,58 @@ class PickPlaceAnalysisResponse(BaseModel):
 
     bounds: PickPlaceBounds
     items: list[PickPlaceAnalysisLine]
+
+
+class PickPlaceSetRequest(BaseModel):
+    file_ids: list[uuid.UUID] = Field(
+        min_length=1,
+    )
+
+
+class PickPlaceFileSummary(BaseModel):
+    quotation_file_id: uuid.UUID
+    original_name: str
+    source_format: str
+    coordinate_unit: Literal[
+        "mil",
+        "mm",
+        "inch",
+        "unknown",
+    ]
+    side: Literal[
+        "top",
+        "bottom",
+        "mixed",
+        "unknown",
+    ]
+    placement_count: int
+    valid_placement_count: int
+    warning_count: int
+
+
+class PickPlaceSetAnalysisResponse(BaseModel):
+    quotation_request_id: uuid.UUID
+
+    source_format: str
+    coordinate_unit: Literal[
+        "mil",
+        "mm",
+        "inch",
+        "mixed",
+        "unknown",
+    ]
+    side: Literal[
+        "top",
+        "bottom",
+        "mixed",
+        "unknown",
+    ]
+
+    files: list[PickPlaceFileSummary]
+
+    placement_count: int
+    valid_placement_count: int
+    warning_count: int
+
+    bounds: PickPlaceBounds
+    items: list[PickPlaceAnalysisLine]

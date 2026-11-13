@@ -1,7 +1,8 @@
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
 
 
 PickPlaceComparisonStatus = Literal[
@@ -10,9 +11,9 @@ PickPlaceComparisonStatus = Literal[
     "value_mismatch",
     "only_in_bom",
     "only_in_pick_place",
+    "technical_position",
     "dnp_in_pick_place",
 ]
-
 
 class PickPlaceComparisonItem(BaseModel):
     status: PickPlaceComparisonStatus
@@ -39,7 +40,6 @@ class PickPlaceComparisonItem(BaseModel):
 
     reason: str
 
-
 class PickPlaceComparisonResponse(BaseModel):
     quotation_request_id: uuid.UUID
     bom_version_id: uuid.UUID
@@ -54,5 +54,27 @@ class PickPlaceComparisonResponse(BaseModel):
     only_in_bom_count: int
     only_in_pick_place_count: int
     dnp_in_pick_place_count: int
+    technical_position_count: int
+    items: list[PickPlaceComparisonItem]
 
+class PickPlaceSetComparisonRequest(BaseModel):
+    file_ids: list[uuid.UUID] = Field(
+        min_length=1,
+    )
+
+class PickPlaceSetComparisonResponse(BaseModel):
+    quotation_request_id: uuid.UUID
+    bom_version_id: uuid.UUID
+    pick_place_file_ids: list[uuid.UUID]
+
+    bom_placement_count: int
+    pick_place_placement_count: int
+
+    exact_match_count: int
+    probable_match_count: int
+    value_mismatch_count: int
+    only_in_bom_count: int
+    only_in_pick_place_count: int
+    dnp_in_pick_place_count: int
+    technical_position_count: int
     items: list[PickPlaceComparisonItem]

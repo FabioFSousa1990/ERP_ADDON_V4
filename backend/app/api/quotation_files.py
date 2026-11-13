@@ -58,10 +58,13 @@ from backend.app.services.bom_analysis import (
 
 from backend.app.schemas.pick_place_analysis import (
     PickPlaceAnalysisResponse,
+    PickPlaceSetAnalysisResponse,
+    PickPlaceSetRequest,
 )
 from backend.app.services.pick_place_analysis import (
     PickPlaceAnalysisError,
     analyze_pick_place_file,
+    analyze_pick_place_set,
 )
 
 router = APIRouter(tags=["quotation files"])
@@ -867,6 +870,74 @@ def analyze_quotation_pick_place(
         return analyze_pick_place_file(
             quotation_file,
             file_path,
+        )
+    except PickPlaceAnalysisError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+
+@router.post(
+    (
+        "/quotation-requests/{quotation_request_id}"
+        "/analyze-pick-place-set"
+    ),
+    response_model=PickPlaceSetAnalysisResponse,
+)
+def analyze_quotation_pick_place_set(
+    quotation_request_id: uuid.UUID,
+    payload: PickPlaceSetRequest,
+    database: DatabaseSession,
+) -> PickPlaceSetAnalysisResponse:
+    if len(payload.file_ids) != len(set(payload.file_ids)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "O mesmo ficheiro Pick&Place foi indicado "
+                "mais do que uma vez."
+            ),
+        )
+
+    quotation_files = [
+        get_file_or_404(
+            file_id,
+            database,
+        )
+        for file_id in payload.file_ids
+    ]
+
+    for quotation_file in quotation_files:
+        if (
+            quotation_file.quotation_request_id
+            != quotation_request_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Um dos ficheiros Pick&Place não pertence "
+                    "à cotação indicada."
+                ),
+            )
+
+        if quotation_file.file_type != "pick_place":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"O ficheiro "
+                    f"{quotation_file.original_name!r} não está "
+                    "classificado como Pick&Place."
+                ),
+            )
+
+    source_paths = [
+        get_storage_path(quotation_file)
+        for quotation_file in quotation_files
+    ]
+
+    try:
+        return analyze_pick_place_set(
+            quotation_files,
+            source_paths,
         )
     except PickPlaceAnalysisError as error:
         raise HTTPException(

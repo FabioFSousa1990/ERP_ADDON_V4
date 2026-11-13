@@ -7,10 +7,12 @@ from backend.app.models.quotation_bom import (
 from backend.app.models.quotation_file import QuotationFile
 from backend.app.schemas.pick_place_analysis import (
     PickPlaceAnalysisResponse,
+    PickPlaceSetAnalysisResponse,
 )
 from backend.app.schemas.pick_place_comparison import (
     PickPlaceComparisonItem,
     PickPlaceComparisonResponse,
+    PickPlaceSetComparisonResponse,
 )
 
 
@@ -20,7 +22,6 @@ class PickPlaceComparisonError(Exception):
 
 def normalize_designator(value: str) -> str:
     return value.strip().upper()
-
 
 def normalize_component_value(
     value: str | None,
@@ -35,7 +36,6 @@ def normalize_component_value(
     )
 
     return normalized or None
-
 
 def natural_designator_key(
     value: str | None,
@@ -56,6 +56,50 @@ def natural_designator_key(
         int(match.group(2)),
     )
 
+def is_technical_position(component: object) -> bool:
+    value = (
+        normalize_component_value(
+            component.value
+        )
+        or ""
+    )
+    footprint = (
+        normalize_component_value(
+            component.footprint
+        )
+        or ""
+    )
+    designator = normalize_designator(
+        component.designator
+    )
+
+    technical_markers = {
+        "testpoint",
+        "testpad",
+        "pintst",
+    }
+
+    if any(
+        marker in footprint
+        for marker in technical_markers
+    ):
+        return True
+
+    if value in {
+        "conn1",
+        "testpoint",
+        "testpad",
+    }:
+        return True
+
+    return (
+        designator.startswith("TP")
+        and (
+            not value
+            or "test" in value
+            or "tpspad" in value
+        )
+    )
 
 def compare_bom_with_pick_place(
     bom_version: QuotationBomVersion,
@@ -332,9 +376,24 @@ def compare_bom_with_pick_place(
     for pick_place_component in (
         unmatched_pick_place.values()
     ):
+        if is_technical_position(
+            pick_place_component
+        ):
+            comparison_status = "technical_position"
+            reason = (
+                "Posição técnica ou ponto de teste presente "
+                "no ficheiro de posições e ausente da BOM."
+            )
+        else:
+            comparison_status = "only_in_pick_place"
+            reason = (
+                "A posição existe no Pick&Place, mas não "
+                "foi encontrada na BOM."
+            )
+
         items.append(
             PickPlaceComparisonItem(
-                status="only_in_pick_place",
+                status=comparison_status,
                 bom_designator=None,
                 pick_place_designator=(
                     pick_place_component.designator
@@ -354,10 +413,7 @@ def compare_bom_with_pick_place(
                     pick_place_component.rotation_degrees
                 ),
                 side=pick_place_component.side,
-                reason=(
-                    "A posição existe no Pick&Place, mas não "
-                    "foi encontrada na BOM."
-                ),
+                reason=reason,
             )
         )
 
@@ -397,8 +453,78 @@ def compare_bom_with_pick_place(
         only_in_pick_place_count=status_counts[
             "only_in_pick_place"
         ],
+        technical_position_count=status_counts[
+            "technical_position"
+        ],
         dnp_in_pick_place_count=status_counts[
             "dnp_in_pick_place"
         ],
         items=items,
+    )
+
+def compare_bom_with_pick_place_set(
+    bom_version: QuotationBomVersion,
+    pick_place_files: list[QuotationFile],
+    pick_place_analysis: PickPlaceSetAnalysisResponse,
+) -> PickPlaceSetComparisonResponse:
+    if not pick_place_files:
+        raise PickPlaceComparisonError(
+            "Não foram indicados ficheiros Pick&Place."
+        )
+
+    for pick_place_file in pick_place_files:
+        if (
+            bom_version.quotation_request_id
+            != pick_place_file.quotation_request_id
+        ):
+            raise PickPlaceComparisonError(
+                "A BOM e os ficheiros Pick&Place não "
+                "pertencem à mesma cotação."
+            )
+
+    first_file = pick_place_files[0]
+
+    comparison = compare_bom_with_pick_place(
+        bom_version,
+        first_file,
+        pick_place_analysis,
+    )
+
+    return PickPlaceSetComparisonResponse(
+        quotation_request_id=(
+            comparison.quotation_request_id
+        ),
+        bom_version_id=comparison.bom_version_id,
+        pick_place_file_ids=[
+            pick_place_file.id
+            for pick_place_file in pick_place_files
+        ],
+        bom_placement_count=(
+            comparison.bom_placement_count
+        ),
+        pick_place_placement_count=(
+            comparison.pick_place_placement_count
+        ),
+        exact_match_count=(
+            comparison.exact_match_count
+        ),
+        probable_match_count=(
+            comparison.probable_match_count
+        ),
+        value_mismatch_count=(
+            comparison.value_mismatch_count
+        ),
+        only_in_bom_count=(
+            comparison.only_in_bom_count
+        ),
+        only_in_pick_place_count=(
+            comparison.only_in_pick_place_count
+        ),
+        technical_position_count=(
+            comparison.technical_position_count
+        ),
+        dnp_in_pick_place_count=(
+            comparison.dnp_in_pick_place_count
+        ),
+        items=comparison.items,
     )

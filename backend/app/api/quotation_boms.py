@@ -49,14 +49,18 @@ from backend.app.schemas.bom_analysis import (
 )
 from backend.app.schemas.pick_place_comparison import (
     PickPlaceComparisonResponse,
+    PickPlaceSetComparisonRequest,
+    PickPlaceSetComparisonResponse,
 )
 from backend.app.services.pick_place_analysis import (
     PickPlaceAnalysisError,
     analyze_pick_place_file,
+    analyze_pick_place_set,
 )
 from backend.app.services.pick_place_comparison import (
     PickPlaceComparisonError,
     compare_bom_with_pick_place,
+    compare_bom_with_pick_place_set,
 )
 router = APIRouter(tags=["quotation BOMs"])
 
@@ -290,6 +294,94 @@ def compare_bom_to_pick_place(
         return compare_bom_with_pick_place(
             bom_version,
             pick_place_file,
+            pick_place_analysis,
+        )
+    except (
+        PickPlaceAnalysisError,
+        PickPlaceComparisonError,
+    ) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+
+@router.post(
+    (
+        "/quotation-bom-versions/{bom_version_id}"
+        "/compare-pick-place-set"
+    ),
+    response_model=PickPlaceSetComparisonResponse,
+)
+def compare_bom_to_pick_place_set(
+    bom_version_id: uuid.UUID,
+    payload: PickPlaceSetComparisonRequest,
+    database: DatabaseSession,
+) -> PickPlaceSetComparisonResponse:
+    bom_version = get_bom_version(
+        bom_version_id,
+        database,
+    )
+
+    if bom_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Versão da BOM não encontrada.",
+        )
+
+    if len(payload.file_ids) != len(set(payload.file_ids)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "O mesmo ficheiro Pick&Place foi indicado "
+                "mais do que uma vez."
+            ),
+        )
+
+    pick_place_files = [
+        get_file_or_404(
+            file_id,
+            database,
+        )
+        for file_id in payload.file_ids
+    ]
+
+    for pick_place_file in pick_place_files:
+        if (
+            pick_place_file.quotation_request_id
+            != bom_version.quotation_request_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Um dos ficheiros Pick&Place não pertence "
+                    "à cotação da BOM."
+                ),
+            )
+
+        if pick_place_file.file_type != "pick_place":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"O ficheiro "
+                    f"{pick_place_file.original_name!r} não está "
+                    "classificado como Pick&Place."
+                ),
+            )
+
+    source_paths = [
+        get_storage_path(pick_place_file)
+        for pick_place_file in pick_place_files
+    ]
+
+    try:
+        pick_place_analysis = analyze_pick_place_set(
+            pick_place_files,
+            source_paths,
+        )
+
+        return compare_bom_with_pick_place_set(
+            bom_version,
+            pick_place_files,
             pick_place_analysis,
         )
     except (
